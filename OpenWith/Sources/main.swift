@@ -2,9 +2,14 @@ import Cocoa
 import SwiftUI
 import ServiceManagement
 
+class PickerWindow: NSPanel {
+    override var canBecomeKey: Bool { true }
+    override var canBecomeMain: Bool { true }
+}
+
 class AppDelegate: NSObject, NSApplicationDelegate, ObservableObject {
     var statusItem: NSStatusItem?
-    var pickerWindow: NSWindow?
+    var pickerWindow: PickerWindow?
     
     @Published var isAccessibilityTrusted: Bool = false
     @Published var isAutomationAllowed: Bool = false
@@ -214,13 +219,14 @@ class AppDelegate: NSObject, NSApplicationDelegate, ObservableObject {
         })
         
         if pickerWindow == nil {
-            pickerWindow = NSWindow(
+            pickerWindow = PickerWindow(
                 contentRect: NSRect(x: 0, y: 0, width: 300, height: 400),
-                styleMask: [.borderless, .fullSizeContentView],
+                styleMask: [.borderless, .nonactivatingPanel, .hudWindow],
                 backing: .buffered,
                 defer: false
             )
             pickerWindow?.level = .floating
+            pickerWindow?.becomesKeyOnlyIfNeeded = false
             pickerWindow?.isOpaque = false
             pickerWindow?.backgroundColor = .clear
             pickerWindow?.hasShadow = true

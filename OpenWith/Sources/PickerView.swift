@@ -7,6 +7,7 @@ struct PickerView: View {
     var onCancel: () -> Void
     
     @State private var selectedIndex = 0
+    @State private var eventMonitor: Any?
     
     var visibleApps: [ApplicationInfo] {
         appDelegate.cachedBrowsers.compactMap { app -> ApplicationInfo? in
@@ -45,60 +46,71 @@ struct PickerView: View {
             .padding()
             
             // List
-            ScrollViewReader { proxy in
-                List {
-                    let options = allOptions
-                    ForEach(0..<options.count, id: \.self) { index in
-                        let option = options[index]
-                        
-                        HStack {
-                            // Shortcut Number
-                            if index < 9 {
-                                Text("\(index + 1)")
-                                    .font(.caption2)
-                                    .bold()
-                                    .foregroundColor(selectedIndex == index ? .white.opacity(0.8) : .secondary)
-                                    .frame(width: 12)
-                            } else {
-                                Spacer().frame(width: 12)
-                            }
-                            
-                            if let profile = option.profile {
-                                Image(systemName: "person.circle")
-                                    .resizable()
-                                    .frame(width: 16, height: 16)
-                                    .padding(.leading, 12)
-                                    .foregroundColor(selectedIndex == index ? .white : .primary.opacity(0.8))
-                                Text(profile.name)
-                                    .font(.subheadline)
-                                    .foregroundColor(selectedIndex == index ? .white : .primary.opacity(0.9))
-                            } else {
-                                if let icon = option.app.icon {
-                                    Image(nsImage: icon)
-                                        .resizable()
-                                        .frame(width: 20, height: 20)
-                                }
-                                Text(option.app.name)
-                                    .font(.body.bold())
-                                    .foregroundColor(selectedIndex == index ? .white : .primary)
-                            }
-                            Spacer()
-                        }
-                        .padding(.vertical, 4)
-                        .padding(.horizontal, 8)
-                        .background(selectedIndex == index ? Color.accentColor : Color.clear)
-                        .cornerRadius(6)
-                        .contentShape(Rectangle())
-                        .onTapGesture {
-                            onSelect(option.app, option.profile)
-                        }
-                        .id(index)
-                    }
+            if allOptions.isEmpty {
+                VStack {
+                    ProgressView()
+                        .padding()
+                    Text("Searching for browsers...")
+                        .font(.caption)
+                        .foregroundColor(.secondary)
                 }
-                .listStyle(.plain)
-                .onChange(of: selectedIndex) { newIndex in
-                    withAnimation {
-                        proxy.scrollTo(newIndex, anchor: .center)
+                .frame(maxHeight: .infinity)
+            } else {
+                ScrollViewReader { proxy in
+                    List {
+                        let options = allOptions
+                        ForEach(0..<options.count, id: \.self) { index in
+                            let option = options[index]
+                            
+                            HStack {
+                                // Shortcut Number
+                                if index < 9 {
+                                    Text("\(index + 1)")
+                                        .font(.caption2)
+                                        .bold()
+                                        .foregroundColor(selectedIndex == index ? .white.opacity(0.8) : .secondary)
+                                        .frame(width: 12)
+                                } else {
+                                    Spacer().frame(width: 12)
+                                }
+                                
+                                if let profile = option.profile {
+                                    Image(systemName: "person.circle")
+                                        .resizable()
+                                        .frame(width: 16, height: 16)
+                                        .padding(.leading, 12)
+                                        .foregroundColor(selectedIndex == index ? .white : .primary.opacity(0.8))
+                                    Text(profile.name)
+                                        .font(.subheadline)
+                                        .foregroundColor(selectedIndex == index ? .white : .primary.opacity(0.9))
+                                } else {
+                                    if let icon = option.app.icon {
+                                        Image(nsImage: icon)
+                                            .resizable()
+                                            .frame(width: 20, height: 20)
+                                    }
+                                    Text(option.app.name)
+                                        .font(.body.bold())
+                                        .foregroundColor(selectedIndex == index ? .white : .primary)
+                                }
+                                Spacer()
+                            }
+                            .padding(.vertical, 4)
+                            .padding(.horizontal, 8)
+                            .background(selectedIndex == index ? Color.accentColor : Color.clear)
+                            .cornerRadius(6)
+                            .contentShape(Rectangle())
+                            .onTapGesture {
+                                onSelect(option.app, option.profile)
+                            }
+                            .id(index)
+                        }
+                    }
+                    .listStyle(.plain)
+                    .onChange(of: selectedIndex) { newIndex in
+                        withAnimation {
+                            proxy.scrollTo(newIndex, anchor: .center)
+                        }
                     }
                 }
             }
@@ -130,82 +142,43 @@ struct PickerView: View {
         }
         .frame(width: 300, height: 400)
         .background(VisualEffectView(material: .hudWindow, blendingMode: .behindWindow))
-        .background(KeyEventsView(
-            onUp: {
-                if selectedIndex > 0 { selectedIndex -= 1 }
-            },
-            onDown: {
-                if selectedIndex < allOptions.count - 1 { selectedIndex += 1 }
-            },
-            onEnter: {
+        .cornerRadius(12)
+        .onAppear {
+            self.eventMonitor = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { event in
                 let options = allOptions
-                if selectedIndex < options.count {
-                    let opt = options[selectedIndex]
-                    onSelect(opt.app, opt.profile)
+                switch event.keyCode {
+                case 126: // Up
+                    if selectedIndex > 0 { selectedIndex -= 1 }
+                    return nil
+                case 125: // Down
+                    if selectedIndex < options.count - 1 { selectedIndex += 1 }
+                    return nil
+                case 36: // Enter
+                    if selectedIndex < options.count {
+                        let opt = options[selectedIndex]
+                        onSelect(opt.app, opt.profile)
+                    }
+                    return nil
+                case 53: // Escape
+                    onCancel()
+                    return nil
+                default:
+                    if let chars = event.characters, let num = Int(chars), num >= 1 && num <= 9 {
+                        let idx = num - 1
+                        if idx >= 0 && idx < options.count {
+                            let opt = options[idx]
+                            onSelect(opt.app, opt.profile)
+                        }
+                        return nil
+                    }
                 }
-            },
-            onEscape: onCancel,
-            onNumber: { num in
-                let options = allOptions
-                let idx = num - 1
-                if idx >= 0 && idx < options.count {
-                    let opt = options[idx]
-                    onSelect(opt.app, opt.profile)
-                }
+                return event
             }
-        ))
-    }
-}
-
-struct KeyEventsView: NSViewRepresentable {
-    let onUp: () -> Void
-    let onDown: () -> Void
-    let onEnter: () -> Void
-    let onEscape: () -> Void
-    let onNumber: (Int) -> Void
-    
-    func makeNSView(context: Context) -> NSView {
-        let view = KeyView()
-        view.onUp = onUp
-        view.onDown = onDown
-        view.onEnter = onEnter
-        view.onEscape = onEscape
-        view.onNumber = onNumber
-        return view
-    }
-    
-    func updateNSView(_ nsView: NSView, context: Context) {}
-    
-    class KeyView: NSView {
-        var onUp: (() -> Void)?
-        var onDown: (() -> Void)?
-        var onEnter: (() -> Void)?
-        var onEscape: (() -> Void)?
-        var onNumber: ((Int) -> Void)?
-        
-        override var acceptsFirstResponder: Bool { true }
-        
-        override func viewDidMoveToWindow() {
-            super.viewDidMoveToWindow()
-            window?.makeFirstResponder(self)
         }
-        
-        override func keyDown(with event: NSEvent) {
-            switch event.keyCode {
-            case 126: // Up
-                onUp?()
-            case 125: // Down
-                onDown?()
-            case 36: // Enter
-                onEnter?()
-            case 53: // Escape
-                onEscape?()
-            default:
-                if let chars = event.characters, let num = Int(chars), num >= 1 && num <= 9 {
-                    onNumber?(num)
-                } else {
-                    super.keyDown(with: event)
-                }
+        .onDisappear {
+            if let monitor = self.eventMonitor {
+                NSEvent.removeMonitor(monitor)
+                self.eventMonitor = nil
             }
         }
     }
