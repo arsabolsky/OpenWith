@@ -49,20 +49,32 @@ class AppDiscovery {
         let fileManager = FileManager.default
         let supportDir = fileManager.urls(for: .applicationSupportDirectory, in: .userDomainMask).first!
         
-        // Common sub-path patterns for Chromium-based apps
-        let possiblePaths = [
-            "Google/\(appName)",
+        // Strategy: Look for directories that match the bundleId or appName
+        // Also check common Chromium paths
+        var searchPaths: [String] = [
+            bundleId,
             appName,
-            "Chromium",
+            "Google/\(appName)",
             "BraveSoftware/\(appName)-Browser",
             "Microsoft Edge",
+            "Chromium",
             "Vivaldi"
         ]
         
-        for subPath in possiblePaths {
+        // Special case for known bundles like Helium (net.imput.helium)
+        if bundleId.contains(".") {
+            searchPaths.append(bundleId)
+            // Also try the last component of the bundleId
+            searchPaths.append(bundleId.components(separatedBy: ".").last!)
+        }
+        
+        for subPath in searchPaths {
             let localStateUrl = supportDir.appendingPathComponent(subPath).appendingPathComponent("Local State")
             if fileManager.fileExists(atPath: localStateUrl.path) {
-                return parseChromiumProfiles(at: localStateUrl)
+                let profiles = parseChromiumProfiles(at: localStateUrl)
+                if !profiles.isEmpty {
+                    return profiles
+                }
             }
         }
         
