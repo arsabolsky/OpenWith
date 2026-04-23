@@ -63,6 +63,8 @@ class AppDiscovery {
         case "company.thebrowser.Browser": possiblePaths = ["Arc"]
         case "com.vivaldi.Vivaldi": possiblePaths = ["Vivaldi"]
         case "net.imput.helium": possiblePaths = ["net.imput.helium"]
+        case "org.mozilla.firefox":
+            return discoverFirefoxProfiles()
         default:
             // For unknown apps, only check paths containing the app name or bundle ID
             possiblePaths = [appName, bundleId]
@@ -95,6 +97,38 @@ class AppDiscovery {
         }
         
         return discoveredProfiles.sorted { $0.name < $1.name }
+    }
+
+    private static func discoverFirefoxProfiles() -> [BrowserProfile] {
+        let fileManager = FileManager.default
+        let supportDir = fileManager.urls(for: .applicationSupportDirectory, in: .userDomainMask).first!
+        let profilesIniUrl = supportDir.appendingPathComponent("Firefox/profiles.ini")
+        
+        guard let content = try? String(contentsOf: profilesIniUrl, encoding: .utf8) else {
+            return []
+        }
+        
+        var profiles: [BrowserProfile] = []
+        let lines = content.components(separatedBy: .newlines)
+        var currentName: String?
+        
+        for line in lines {
+            let trimmed = line.trimmingCharacters(in: .whitespacesAndNewlines)
+            if trimmed.hasPrefix("[Profile") {
+                if let name = currentName {
+                    profiles.append(BrowserProfile(id: name, name: name))
+                }
+                currentName = nil
+            } else if trimmed.hasPrefix("Name=") {
+                currentName = String(trimmed.dropFirst(5))
+            }
+        }
+        
+        if let name = currentName {
+            profiles.append(BrowserProfile(id: name, name: name))
+        }
+        
+        return profiles.sorted { $0.name < $1.name }
     }
 
     private static func discoverSafariProfiles() -> [BrowserProfile] {

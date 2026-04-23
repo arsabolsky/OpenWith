@@ -192,18 +192,29 @@ class AppDelegate: NSObject, NSApplicationDelegate, ObservableObject {
         
         if let profile = profile {
             // For Chromium-based browsers, we use /usr/bin/open -na to ensure the profile flag is respected
-            let isChromium = ["com.google.Chrome", "com.google.Chrome.canary", "org.chromium.Chromium", "com.microsoft.edgemac", "com.brave.Browser", "company.thebrowser.Browser", "com.vivaldi.Vivaldi", "net.imput.helium"].contains(app.bundleIdentifier)
+            let chromiumIds = ["com.google.Chrome", "com.google.Chrome.canary", "org.chromium.Chromium", "com.microsoft.edgemac", "com.brave.Browser", "company.thebrowser.Browser", "com.vivaldi.Vivaldi", "net.imput.helium"]
+            let isChromium = chromiumIds.contains(app.bundleIdentifier)
+            let isFirefox = app.bundleIdentifier == "org.mozilla.firefox"
             
-            if isChromium {
+            if isChromium || isFirefox {
                 let process = Process()
                 process.executableURL = URL(fileURLWithPath: "/usr/bin/open")
-                process.arguments = ["-na", app.path.path, "--args", "--profile-directory=\(profile.id)", url.absoluteString]
+                
+                var arguments = ["-na", app.path.path]
+                if isChromium {
+                    arguments.append(contentsOf: ["--args", "--profile-directory=\(profile.id)"])
+                } else if isFirefox {
+                    arguments.append(contentsOf: ["--args", "-P", profile.id])
+                }
+                arguments.append(url.absoluteString)
+                
+                process.arguments = arguments
                 
                 do {
                     try process.run()
                     return
                 } catch {
-                    print("Failed to launch Chromium profile via Process: \(error)")
+                    print("Failed to launch \(app.name) profile via Process: \(error)")
                     // Fallback to NSWorkspace if Process fails
                 }
             }
