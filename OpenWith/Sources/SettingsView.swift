@@ -85,12 +85,12 @@ struct SettingsView: View {
                                 }
                                 
                                 ForEach(app.profiles) { profile in
+                                    let isParentHidden = appDelegate.hiddenBundleIds.contains(app.bundleIdentifier)
                                     HStack {
                                         Image(systemName: "person.circle")
                                             .padding(.leading, 20)
                                         Text(profile.name)
                                             .font(.subheadline)
-                                            .foregroundColor(appDelegate.hiddenBundleIds.contains(app.bundleIdentifier) ? .secondary.opacity(0.5) : .secondary)
                                         Spacer()
                                         Toggle("", isOn: Binding(
                                             get: { !appDelegate.hiddenProfileIds.contains(profile.id) },
@@ -106,8 +106,9 @@ struct SettingsView: View {
                                         .toggleStyle(.switch)
                                         .labelsHidden()
                                         .scaleEffect(0.8)
-                                        .disabled(appDelegate.hiddenBundleIds.contains(app.bundleIdentifier))
+                                        .disabled(isParentHidden)
                                     }
+                                    .foregroundColor(isParentHidden ? .secondary.opacity(0.5) : .primary)
                                 }
                             }
                         }
