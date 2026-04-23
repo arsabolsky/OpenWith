@@ -151,7 +151,18 @@ class AppDelegate: NSObject, NSApplicationDelegate, ObservableObject {
         }
         
         let configuration = NSWorkspace.OpenConfiguration()
-...
+        if let profile = profile {
+            // Chromium browsers use --profile-directory
+            configuration.arguments = ["--profile-directory=\(profile.id)"]
+        }
+        
+        NSWorkspace.shared.open([url], withApplicationAt: app.path, configuration: configuration) { _, error in
+            if let error = error {
+                print("Error opening URL: \(error.localizedDescription)")
+            }
+        }
+    }
+
     func openFirefox(url: URL, profile: BrowserProfile, path: URL) {
         let binaryPath = path.appendingPathComponent("Contents/MacOS/firefox").path
         let task = Process()
