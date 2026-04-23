@@ -10,29 +10,31 @@ struct ApplicationInfo: Identifiable, Hashable {
 
 class AppDiscovery {
     static func getInstalledBrowsers() -> [ApplicationInfo] {
-        let browserIds = [
-            "com.apple.Safari",
-            "com.google.Chrome",
-            "com.google.Chrome.canary",
-            "org.mozilla.firefox",
-            "com.microsoft.edgemac",
-            "company.thebrowser.Browser", // Arc
-            "com.operasoftware.Opera",
-            "com.brave.Browser",
-            "com.vivaldi.Vivaldi"
-        ]
+        let workspace = NSWorkspace.shared
+        let httpsUrl = URL(string: "https://")!
+        
+        // Find all apps that can open https:// URLs
+        let appUrls = workspace.urlsForApplications(toOpen: httpsUrl)
         
         var apps: [ApplicationInfo] = []
-        let workspace = NSWorkspace.shared
+        let myBundleId = Bundle.main.bundleIdentifier
         
-        for bundleId in browserIds {
-            if let path = workspace.urlForApplication(withBundleIdentifier: bundleId) {
-                let name = (try? path.resourceValues(forKeys: [.localizedNameKey]).localizedName) ?? path.deletingPathExtension().lastPathComponent
-                let icon = workspace.icon(forFile: path.path)
+        for path in appUrls {
+            guard let bundleId = Bundle(url: path)?.bundleIdentifier else { continue }
+            
+            // Don't show ourselves in the list
+            if bundleId == myBundleId { continue }
+            
+            let name = (try? path.resourceValues(forKeys: [.localizedNameKey]).localizedName) ?? path.deletingPathExtension().lastPathComponent
+            let icon = workspace.icon(forFile: path.path)
+            
+            // Avoid duplicates (some browsers might have multiple entries)
+            if !apps.contains(where: { $0.bundleIdentifier == bundleId }) {
                 apps.append(ApplicationInfo(name: name, bundleIdentifier: bundleId, path: path, icon: icon))
             }
         }
         
-        return apps
+        // Sort alphabetically
+        return apps.sorted { $0.name < $1.name }
     }
 }
