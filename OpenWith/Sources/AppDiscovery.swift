@@ -131,8 +131,7 @@ class AppDiscovery {
         }
         return sections
     }
-}
-    
+
     private static func parseChromiumProfiles(at url: URL) -> [BrowserProfile] {
         guard let data = try? Data(contentsOf: url),
               let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
