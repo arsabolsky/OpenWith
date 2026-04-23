@@ -90,22 +90,71 @@ class AppDiscovery {
     }
     
     private static func discoverFirefoxProfiles(at url: URL) -> [BrowserProfile] {
-        let iniUrl = url.appendingPathComponent("profiles.ini")
-        guard let content = try? String(contentsOf: iniUrl, encoding: .utf8) else { return [] }
+        var discoveredProfiles: [String: String] = [:] // ID -> Name
         
-        var profiles: [BrowserProfile] = []
-        let sections = parseIni(content)
-        
-        for (sectionName, keys) in sections {
-            if sectionName.lowercased().starts(with: "profile") {
-                if let name = keys["Name"] {
-                    // For Firefox, the id used for launching with -P is the profile name itself
-                    profiles.append(BrowserProfile(id: name, name: name))
+        // 1. Try modern Profile Groups (SQLite)
+        let profileGroupsDir = url.appendingPathComponent("Profile Groups")
+        if let contents = try? FileManager.default.contentsOfDirectory(at: profileGroupsDir, includingPropertiesForKeys: nil) {
+            for fileUrl in contents where fileUrl.pathExtension == "sqlite" {
+                if let sqliteProfiles = parseFirefoxSqlite(at: fileUrl) {
+                    for p in sqliteProfiles {
+                        discoveredProfiles[p.id] = p.name
+                    }
                 }
             }
         }
         
-        return profiles.sorted { $0.name < $1.name }
+        // 2. Fallback/Merge with profiles.ini
+        let iniUrl = url.appendingPathComponent("profiles.ini")
+        if let content = try? String(contentsOf: iniUrl, encoding: .utf8) {
+            let sections = parseIni(content)
+            for (sectionName, keys) in sections {
+                if sectionName.lowercased().starts(with: "profile") {
+                    if let name = keys["Name"] {
+                        if discoveredProfiles[name] == nil {
+                            discoveredProfiles[name] = name
+                        }
+                    }
+                }
+            }
+        }
+        
+        return discoveredProfiles.map { BrowserProfile(id: $0.key, name: $0.value) }.sorted { $0.name < $1.name }
+    }
+    
+    private static func parseFirefoxSqlite(at url: URL) -> [BrowserProfile]? {
+        // Since we can't easily link SQLite in a simple SPM script without dependencies,
+        // we will use a shell command to dump the table if possible, or skip for now.
+        // Actually, we can use process execution to run sqlite3 which is built into macOS.
+        
+        let task = Process()
+        task.launchPath = "/usr/bin/sqlite3"
+        task.arguments = [url.path, "SELECT path, name FROM Profiles;"]
+        
+        let pipe = Pipe()
+        task.standardOutput = pipe
+        
+        do {
+            try task.run()
+            let data = pipe.fileHandleForReading.readDataToEndOfFile()
+            if let output = String(data: data, encoding: .utf8) {
+                var profiles: [BrowserProfile] = []
+                let lines = output.components(separatedBy: .newlines)
+                for line in lines where !line.isEmpty {
+                    let parts = line.components(separatedBy: "|")
+                    if parts.count >= 2 {
+                        // For Firefox, the name is what matters for the -P flag
+                        let name = parts[1]
+                        profiles.append(BrowserProfile(id: name, name: name))
+                    }
+                }
+                return profiles
+            }
+        } catch {
+            print("Error reading Firefox SQLite: \(error)")
+        }
+        
+        return nil
     }
     
     private static func parseIni(_ content: String) -> [String: [String: String]] {
