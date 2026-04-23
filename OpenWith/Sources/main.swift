@@ -7,10 +7,12 @@ class AppDelegate: NSObject, NSApplicationDelegate, ObservableObject {
     @Published var rules: [Rule] = []
     @Published var isAccessibilityTrusted: Bool = false
     @Published var isAutomationAllowed: Bool = false
+    @Published var cachedBrowsers: [ApplicationInfo] = []
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         loadRules()
         checkPermissions()
+        refreshBrowserCache()
         
         // Setup Menu Bar Item
         statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
@@ -31,6 +33,13 @@ class AppDelegate: NSObject, NSApplicationDelegate, ObservableObject {
 
     func applicationDidBecomeActive(_ notification: Notification) {
         checkPermissions()
+        refreshBrowserCache()
+    }
+
+    func refreshBrowserCache() {
+        print("Refreshing browser cache...")
+        self.cachedBrowsers = AppDiscovery.getInstalledBrowsers()
+        fflush(stdout)
     }
 
     func loadRules() {
@@ -145,9 +154,7 @@ class AppDelegate: NSObject, NSApplicationDelegate, ObservableObject {
     }
     
     func showAppPicker(for url: URL) {
-        let browsers = AppDiscovery.getInstalledBrowsers()
-        
-        let contentView = PickerView(url: url, apps: browsers) { selectedApp, profile in
+        let contentView = PickerView(url: url, apps: cachedBrowsers) { selectedApp, profile in
             self.open(url: url, in: selectedApp, profile: profile)
             self.closePicker()
         }
@@ -206,9 +213,17 @@ class AppDelegate: NSObject, NSApplicationDelegate, ObservableObject {
             activate
             tell application "System Events"
                 tell process "Safari"
-                    if exists menu bar item "Profiles" of menu bar 1 then
-                        click menu item "\(profile.name)" of menu 1 of menu bar item "Profiles" of menu bar 1
-                    end if
+                    try
+                        tell menu bar item "File" of menu bar 1
+                            tell menu 1
+                                tell menu item "New Window"
+                                    click menu item "\(profile.id)" of menu 1
+                                end tell
+                            end tell
+                        end tell
+                    on error errMsg
+                        log "Error launching Safari profile: " & errMsg
+                    end try
                 end tell
             end tell
             open location "\(url.absoluteString)"
@@ -217,9 +232,11 @@ class AppDelegate: NSObject, NSApplicationDelegate, ObservableObject {
         
         if let script = NSAppleScript(source: scriptSource) {
             var error: NSDictionary?
-            script.executeAndReturnError(&error)
+            let result = script.executeAndReturnError(&error)
             if let err = error {
-                print("Safari AppleScript error: \(err)")
+                print("Safari Launch AppleScript Error: \(err)")
+            } else {
+                print("Safari Launch AppleScript Success: \(result)")
             }
         }
     }

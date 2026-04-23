@@ -33,6 +33,6 @@ cp -R "$APP_NAME" /Applications/
 
 # Open the app
 echo "Opening OpenWith.app..."
-open /Applications/OpenWith.app
+/Applications/OpenWith.app/Contents/MacOS/OpenWith > /tmp/openwith.log 2>&1 &
 
-echo "Finished: OpenWith.app is now running from /Applications."
+echo "Finished: OpenWith.app is now running from /Applications. Logs at /tmp/openwith.log"

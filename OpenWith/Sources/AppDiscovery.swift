@@ -98,19 +98,22 @@ class AppDiscovery {
     }
 
     private static func discoverSafariProfiles() -> [BrowserProfile] {
+        print("Discovering Safari profiles from File > New Window submenu...")
         let scriptSource = """
         tell application "System Events"
-            if exists process "Safari" then
-                tell process "Safari"
-                    if exists menu bar item "Profiles" of menu bar 1 then
-                        get name of menu items of menu 1 of menu bar item "Profiles" of menu bar 1
-                    else
-                        return {}
-                    end if
-                end tell
-            else
-                return {}
-            end if
+            tell process "Safari"
+                try
+                    tell menu bar item "File" of menu bar 1
+                        tell menu 1
+                            tell menu item "New Window"
+                                return name of menu items of menu 1
+                            end tell
+                        end tell
+                    end tell
+                on error
+                    return {}
+                end try
+            end tell
         end tell
         """
         
@@ -118,18 +121,32 @@ class AppDiscovery {
         if let script = NSAppleScript(source: scriptSource) {
             var error: NSDictionary?
             let result = script.executeAndReturnError(&error)
-            if error == nil {
+            if let err = error {
+                print("Safari Profile Discovery AppleScript Error: \(err)")
+                fflush(stdout)
+            } else {
+                print("Safari Profile Discovery Raw Result: \(result)")
                 let count = result.numberOfItems
-                if count > 0 {
+                if count >= 1 {
                     for i in 1...count {
-                        if let name = result.atIndex(i)?.stringValue, !name.isEmpty {
-                            profiles.append(BrowserProfile(id: name, name: name))
+                        if let fullName = result.atIndex(i)?.stringValue, !fullName.isEmpty {
+                            print("Found Safari Profile Candidate: \(fullName)")
+                            
+                            var displayName = fullName
+                            if displayName.hasPrefix("New ") {
+                                displayName = String(displayName.dropFirst(4))
+                            }
+                            if displayName.hasSuffix(" Window") {
+                                displayName = String(displayName.dropLast(7))
+                            }
+                            
+                            profiles.append(BrowserProfile(id: fullName, name: displayName))
                         }
                     }
                 }
+                fflush(stdout)
             }
         }
-        
         return profiles
     }
 }
