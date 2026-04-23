@@ -32,13 +32,20 @@ class AppDiscovery {
             
             var appInfo = ApplicationInfo(name: name, bundleIdentifier: bundleId, path: path, icon: icon)
             
-            // Discover profiles for Chromium-based browsers
             if isChromiumBased(bundleId: bundleId) {
                 appInfo.profiles = discoverChromiumProfiles(bundleId: bundleId)
             } else if bundleId == "com.apple.Safari" {
                 appInfo.profiles = discoverSafariProfiles()
             }
-...
+            
+            if !apps.contains(where: { $0.bundleIdentifier == bundleId }) {
+                apps.append(appInfo)
+            }
+        }
+        
+        return apps.sorted { $0.name < $1.name }
+    }
+    
     private static func discoverSafariProfiles() -> [BrowserProfile] {
         let script = """
         tell application "System Events"
@@ -95,7 +102,8 @@ class AppDiscovery {
             "com.microsoft.edgemac",
             "com.brave.Browser",
             "company.thebrowser.Browser", // Arc
-            "com.vivaldi.Vivaldi"
+            "com.vivaldi.Vivaldi",
+            "net.imput.helium"
         ]
         return chromiumIds.contains(bundleId)
     }
@@ -112,6 +120,7 @@ class AppDiscovery {
         case "com.brave.Browser": browserSubDir = "BraveSoftware/Brave-Browser"
         case "company.thebrowser.Browser": browserSubDir = "Arc"
         case "com.vivaldi.Vivaldi": browserSubDir = "Vivaldi"
+        case "net.imput.helium": browserSubDir = "net.imput.helium"
         default: return []
         }
         
