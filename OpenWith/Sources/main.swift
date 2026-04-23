@@ -209,6 +209,9 @@ class AppDelegate: NSObject, NSApplicationDelegate, ObservableObject {
         }
 
         let scriptSource = """
+        set theURL to "\(url.absoluteString)"
+        set the clipboard to theURL
+        
         tell application "Safari" to activate
         delay 0.3
         
@@ -216,7 +219,7 @@ class AppDelegate: NSObject, NSApplicationDelegate, ObservableObject {
             tell process "Safari"
                 set frontmost to true
                 try
-                    -- Try Path 1: File > New Window > [Profile]
+                    -- Phase 1: Create/Focus the profile window
                     try
                         tell menu bar item "File" of menu bar 1
                             tell menu 1
@@ -226,7 +229,6 @@ class AppDelegate: NSObject, NSApplicationDelegate, ObservableObject {
                             end tell
                         end tell
                     on error
-                        -- Try Path 2: File > [Profile] (Direct)
                         tell menu bar item "File" of menu bar 1
                             tell menu 1
                                 click menu item "\(profile.id)"
@@ -234,12 +236,12 @@ class AppDelegate: NSObject, NSApplicationDelegate, ObservableObject {
                         end tell
                     end try
                     
-                    delay 0.5 -- Essential for window creation stability
+                    delay 0.5
                     
-                    -- Phase 2: Inject URL via keystrokes to target the correct profile window
-                    keystroke "l" using {command down}
+                    -- Phase 2: Paste the URL (Much safer and faster than typing)
+                    keystroke "l" using {command down} -- Focus Address Bar
                     delay 0.2
-                    keystroke "\(url.absoluteString)"
+                    keystroke "v" using {command down} -- Paste
                     delay 0.1
                     keystroke return
                 on error errMsg
