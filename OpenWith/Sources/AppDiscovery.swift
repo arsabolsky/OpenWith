@@ -196,41 +196,38 @@ class AppDiscovery {
             if exists process "Safari" then
                 tell process "Safari"
                     set foundNames to {}
+                    set fileMenu to menu 1 of menu bar item "File" of menu bar 1
+                    
+                    -- 1. Scan direct items for "New ... Window"
                     try
-                        tell menu 1 of menu bar item "File" of menu bar 1
-                            -- 1. Check direct items like "New [Name] Window"
-                            set allItems to name of every menu item
-                            repeat with itemName in allItems
-                                if itemName is not missing value then
-                                    if (itemName starts with "New ") and (itemName ends with " Window") then
-                                        copy itemName to end of foundNames
-                                    end if
-                                end if
-                            end repeat
-                            
-                            -- 2. Check "New Window" submenu
-                            try
-                                set subItems to name of menu items of menu 1 of menu item "New Window"
-                                repeat with subName in subItems
-                                    if subName is not missing value and subName is not "" then
-                                        copy subName to end of foundNames
-                                    end if
-                                end repeat
-                            end try
-
-                            -- 3. Check for dedicated "Profiles" submenu
-                            try
-                                set profItems to name of menu items of menu 1 of menu item "Profiles"
-                                repeat with profName in profItems
-                                    if profName is not missing value and profName is not "" then
-                                        copy profName to end of foundNames
-                                    end if
-                                end repeat
-                            end try
-                        end tell
-                    on error
-                        return {"_ERROR_"}
+                        set directItems to name of every menu item of fileMenu
+                        repeat with itemName in directItems
+                            if itemName is not missing value and itemName starts with "New " and itemName ends with " Window" then
+                                copy itemName to end of foundNames
+                            end if
+                        end repeat
                     end try
+                    
+                    -- 2. Scan "New Window" submenu if it exists
+                    try
+                        set subItems to name of menu items of menu 1 of menu item "New Window" of fileMenu
+                        repeat with itemName in subItems
+                            if itemName is not missing value and itemName is not "" then
+                                copy itemName to end of foundNames
+                            end if
+                        end repeat
+                    end try
+
+                    -- 3. Scan "Profiles" submenu if it exists
+                    try
+                        set profItems to name of menu items of menu 1 of menu item "Profiles" of fileMenu
+                        repeat with itemName in profItems
+                            if itemName is not missing value and itemName is not "" then
+                                copy itemName to end of foundNames
+                            end if
+                        end repeat
+                    end try
+                    
                     return foundNames
                 end tell
             else
@@ -248,7 +245,7 @@ class AppDiscovery {
                 let count = result.numberOfItems
                 if count >= 1 {
                     let firstItem = result.atIndex(1)?.stringValue
-                    if firstItem != "_SAFARI_NOT_RUNNING_" && firstItem != "_ERROR_" {
+                    if firstItem != "_SAFARI_NOT_RUNNING_" {
                         var namesSet = Set<String>()
                         for i in 1...count {
                             if let fullName = result.atIndex(i)?.stringValue, !fullName.isEmpty {
@@ -258,18 +255,20 @@ class AppDiscovery {
                                 var id = fullName
                                 var displayName = fullName
                                 
+                                // Clean up the display name but keep full name as ID for clicking
                                 if fullName.hasPrefix("New ") && fullName.hasSuffix(" Window") {
                                     displayName = String(fullName.dropFirst(4).dropLast(7))
                                 } else {
-                                    id = "New \(fullName) Window"
+                                    // If it's just the name (e.g. from a submenu), we'll need to reconstruct 
+                                    // the menu item name if we can't find it directly.
+                                    // But for now, we assume Path 3 in main.swift handles direct clicks.
                                     displayName = fullName
+                                    id = fullName
                                 }
                                 
-                                // Filter out standard Safari items that aren't user profiles
                                 let lowerName = displayName.lowercased()
-                                if lowerName == "tab" || lowerName == "window" || lowerName == "private" || 
-                                   lowerName == "private window" || lowerName == "empty tab group" ||
-                                   lowerName == "new window" || lowerName == "new private window" {
+                                let blacklisted = ["tab", "window", "private", "private window", "empty tab group", "new window", "new private window"]
+                                if blacklisted.contains(lowerName) {
                                     continue
                                 }
                                 
@@ -277,30 +276,18 @@ class AppDiscovery {
                             }
                         }
                         
-                        // Always update cache if Safari is running and we successfully scanned
-                        saveSafariProfilesToCache(discoveredProfiles)
+                        // Only update cache if we found actual profiles
+                        if !discoveredProfiles.isEmpty {
+                            saveSafariProfilesToCache(discoveredProfiles)
+                        }
                     }
                 }
             }
         }
         
-        // If Safari is running, trust discoveredProfiles (even if empty)
-        // Only fallback to cache if Safari is not running or error occurred
+        // Fallback logic
         if discoveredProfiles.isEmpty {
-            let scriptCheck = """
-            tell application "System Events" to exists process "Safari"
-            """
-            var isRunning = false
-            if let script = NSAppleScript(source: scriptCheck) {
-                isRunning = script.executeAndReturnError(nil).booleanValue
-            }
-            
-            if !isRunning {
-                let cached = loadSafariProfilesFromCache()
-                if !cached.isEmpty {
-                    return cached
-                }
-            }
+            return loadSafariProfilesFromCache()
         }
         
         return discoveredProfiles
