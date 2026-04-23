@@ -22,7 +22,7 @@ class AppDelegate: NSObject, NSApplicationDelegate, ObservableObject {
         // Setup Menu Bar Item
         statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
         if let button = statusItem?.button {
-            button.image = NSImage(systemSymbolName: "arrow.up.right.square", accessibilityDescription: "OpenWith")
+            button.title = "🔗"
         }
 
         setupMenu()

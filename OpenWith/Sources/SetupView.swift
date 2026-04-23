@@ -6,10 +6,8 @@ struct SetupView: View {
     
     var body: some View {
         VStack(spacing: 20) {
-            Image(systemName: "arrow.up.right.square.fill")
-                .resizable()
-                .frame(width: 64, height: 64)
-                .foregroundColor(.accentColor)
+            Text("🔗")
+                .font(.system(size: 64))
                 .padding(.top)
             
             Text("Welcome to OpenWith")
