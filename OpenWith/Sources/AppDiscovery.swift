@@ -90,36 +90,33 @@ class AppDiscovery {
     }
     
     private static func discoverFirefoxProfiles(at url: URL) -> [BrowserProfile] {
-        var discoveredProfiles: [String: String] = [:] // ID -> Name
+        var discoveredProfiles: [BrowserProfile] = []
         
-        // 1. Try modern Profile Groups (SQLite)
+        // 1. Detect Modern Firefox (Profile Groups)
         let profileGroupsDir = url.appendingPathComponent("Profile Groups")
         if let contents = try? FileManager.default.contentsOfDirectory(at: profileGroupsDir, includingPropertiesForKeys: nil) {
             for fileUrl in contents where fileUrl.pathExtension == "sqlite" {
-                if let sqliteProfiles = parseFirefoxSqlite(at: fileUrl) {
-                    for p in sqliteProfiles {
-                        discoveredProfiles[p.id] = p.name
+                if let sqliteProfiles = parseFirefoxSqlite(at: fileUrl), !sqliteProfiles.isEmpty {
+                    // If we found modern profiles, we prefer these
+                    discoveredProfiles.append(contentsOf: sqliteProfiles)
+                }
+            }
+        }
+        
+        // 2. If no modern profiles found, fallback to Traditional Firefox (profiles.ini)
+        if discoveredProfiles.isEmpty {
+            let iniUrl = url.appendingPathComponent("profiles.ini")
+            if let content = try? String(contentsOf: iniUrl, encoding: .utf8) {
+                let sections = parseIni(content)
+                for (sectionName, keys) in sections {
+                    if sectionName.lowercased().starts(with: "profile"), let name = keys["Name"] {
+                        discoveredProfiles.append(BrowserProfile(id: name, name: name))
                     }
                 }
             }
         }
         
-        // 2. Fallback/Merge with profiles.ini
-        let iniUrl = url.appendingPathComponent("profiles.ini")
-        if let content = try? String(contentsOf: iniUrl, encoding: .utf8) {
-            let sections = parseIni(content)
-            for (sectionName, keys) in sections {
-                if sectionName.lowercased().starts(with: "profile") {
-                    if let name = keys["Name"] {
-                        if discoveredProfiles[name] == nil {
-                            discoveredProfiles[name] = name
-                        }
-                    }
-                }
-            }
-        }
-        
-        return discoveredProfiles.map { BrowserProfile(id: $0.key, name: $0.value) }.sorted { $0.name < $1.name }
+        return discoveredProfiles.sorted { $0.name < $1.name }
     }
     
     private static func parseFirefoxSqlite(at url: URL) -> [BrowserProfile]? {
