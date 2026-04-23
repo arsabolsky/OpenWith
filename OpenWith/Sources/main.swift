@@ -87,6 +87,11 @@ class AppDelegate: NSObject, NSApplicationDelegate, ObservableObject {
         }
     }
 
+    func clearCache() {
+        UserDefaults.standard.removeObject(forKey: "CachedSafariProfiles")
+        refreshBrowserCache()
+    }
+
     func loadHiddenItems() {
         if let bundles = UserDefaults.standard.stringArray(forKey: "HiddenBundleIds") {
             self.hiddenBundleIds = Set(bundles)
@@ -133,9 +138,14 @@ class AppDelegate: NSObject, NSApplicationDelegate, ObservableObject {
     func setupMenu() {
         let menu = NSMenu()
         menu.addItem(NSMenuItem(title: "Settings...", action: #selector(openSettings), keyEquivalent: ","))
+        menu.addItem(NSMenuItem(title: "Clear Cache", action: #selector(triggerClearCache), keyEquivalent: ""))
         menu.addItem(NSMenuItem.separator())
         menu.addItem(NSMenuItem(title: "Quit OpenWith", action: #selector(NSApplication.terminate(_:)), keyEquivalent: "q"))
         statusItem?.menu = menu
+    }
+
+    @objc func triggerClearCache() {
+        clearCache()
     }
 
     var settingsWindow: NSWindow?

@@ -246,38 +246,36 @@ class AppDiscovery {
                 if count >= 1 {
                     let firstItem = result.atIndex(1)?.stringValue
                     if firstItem != "_SAFARI_NOT_RUNNING_" {
-                        var namesSet = Set<String>()
+                        var displayNamesSet = Set<String>()
                         for i in 1...count {
                             if let fullName = result.atIndex(i)?.stringValue, !fullName.isEmpty {
-                                if namesSet.contains(fullName) { continue }
-                                namesSet.insert(fullName)
-                                
-                                var id = fullName
                                 var displayName = fullName
                                 
-                                // Clean up the display name but keep full name as ID for clicking
+                                // Clean up the display name
                                 if fullName.hasPrefix("New ") && fullName.hasSuffix(" Window") {
                                     displayName = String(fullName.dropFirst(4).dropLast(7))
-                                } else {
-                                    // If it's just the name (e.g. from a submenu), we'll need to reconstruct 
-                                    // the menu item name if we can't find it directly.
-                                    // But for now, we assume Path 3 in main.swift handles direct clicks.
-                                    displayName = fullName
-                                    id = fullName
                                 }
                                 
                                 let lowerName = displayName.lowercased()
-                                let blacklisted = ["tab", "window", "private", "private window", "empty tab group", "new window", "new private window"]
+                                // Broaden blacklist to catch more standard items
+                                let blacklisted = ["tab", "window", "private", "private window", "empty tab group", "new window", "new private window", "manage profiles…", "profiles", "new empty tab group", "new tab", "new tab at end", "open file…", "open location…", "close window", "close all windows", "close tab", "close other tabs", "delete tab group", "save as…", "share…", "export as pdf…", "add to dock…", "import browsing data from file or folder…", "export browsing data to file…", "print…"]
+                                
                                 if blacklisted.contains(lowerName) {
                                     continue
                                 }
                                 
-                                discoveredProfiles.append(BrowserProfile(id: "\(bundleId):\(id)", name: displayName))
+                                // Deduplicate by display name
+                                if displayNamesSet.contains(lowerName) { continue }
+                                displayNamesSet.insert(lowerName)
+                                
+                                print("Safari: Accept Candidate: \(displayName) (ID: \(fullName))")
+                                discoveredProfiles.append(BrowserProfile(id: "\(bundleId):\(fullName)", name: displayName))
                             }
                         }
                         
                         // Only update cache if we found actual profiles
                         if !discoveredProfiles.isEmpty {
+                            print("Safari: Discovered \(discoveredProfiles.count) profiles: \(discoveredProfiles.map { $0.name })")
                             saveSafariProfilesToCache(discoveredProfiles)
                         }
                     }
@@ -285,12 +283,23 @@ class AppDiscovery {
             }
         }
         
-        // Fallback logic
-        if discoveredProfiles.isEmpty {
+        if !discoveredProfiles.isEmpty {
+            saveSafariProfilesToCache(discoveredProfiles)
+            return discoveredProfiles
+        }
+        
+        // No live profiles found. Check if Safari is running.
+        let scriptCheck = "tell application \"System Events\" to exists process \"Safari\""
+        var isRunning = false
+        if let script = NSAppleScript(source: scriptCheck) {
+            isRunning = script.executeAndReturnError(nil).booleanValue
+        }
+        
+        if !isRunning {
             return loadSafariProfilesFromCache()
         }
         
-        return discoveredProfiles
+        return []
     }
 
     private static func saveSafariProfilesToCache(_ profiles: [BrowserProfile]) {
