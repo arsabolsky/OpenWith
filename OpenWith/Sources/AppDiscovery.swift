@@ -95,27 +95,17 @@ class AppDiscovery {
     }
 
     private static func discoverSafariProfiles() -> [BrowserProfile] {
-        // First check if Safari is even running, otherwise UI scripting will fail
-        let script = """
-        if application "Safari" is running then
-            tell application "System Events"
-                tell process "Safari"
-                    try
-                        set fileMenu to menu 1 of menu bar item "File" of menu bar 1
-                        return name of menu items of fileMenu
-                    on error
-                        return {}
-                    end try
-                end tell
-            end tell
-        else
-            return {}
-        end if
-        """
+        let homeDir = FileManager.default.homeDirectoryForCurrentUser
+        let dbUrl = homeDir.appendingPathComponent("Library/Containers/com.apple.Safari/Data/Library/Safari/SafariTabs.db")
+        
+        if !FileManager.default.fileExists(atPath: dbUrl.path) {
+            return []
+        }
         
         let task = Process()
-        task.launchPath = "/usr/bin/osascript"
-        task.arguments = ["-e", script]
+        task.launchPath = "/usr/bin/sqlite3"
+        // Query SafariTabs.db for profile titles (type=1, subtype=2 is profiles)
+        task.arguments = [dbUrl.path, "SELECT title FROM bookmarks WHERE type = 1 AND subtype = 2;"]
         
         let pipe = Pipe()
         task.standardOutput = pipe
@@ -125,32 +115,24 @@ class AppDiscovery {
             let data = pipe.fileHandleForReading.readDataToEndOfFile()
             if let output = String(data: data, encoding: .utf8) {
                 var profiles: [BrowserProfile] = []
-                // AppleScript returns a comma-separated list
-                let items = output.components(separatedBy: ", ")
-                for item in items {
-                    let name = item.trimmingCharacters(in: .whitespacesAndNewlines)
-                    
-                    // Safari profiles are always "New [ProfileName] Window"
-                    if name.hasPrefix("New ") && name.hasSuffix(" Window") {
-                        let profileName = name.replacingOccurrences(of: "New ", with: "")
-                                              .replacingOccurrences(of: " Window", with: "")
-                        
-                        // Exclusion list for standard Safari menu items
-                        let standardItems = ["Private", "Tab", "Window", "Empty Tab Group", "Tab Group with This Tab"]
-                        if standardItems.contains(profileName) || profileName.isEmpty {
-                            continue
-                        }
-                        
-                        profiles.append(BrowserProfile(id: profileName, name: profileName))
-                    }
+                let lines = output.components(separatedBy: .newlines)
+                for line in lines where !line.isEmpty {
+                    let name = line.trimmingCharacters(in: .whitespacesAndNewlines)
+                    profiles.append(BrowserProfile(id: name, name: name))
                 }
+                
+                // Safari always has a "Personal" (default) profile even if not in DB
+                if !profiles.contains(where: { $0.name == "Personal" }) {
+                    profiles.insert(BrowserProfile(id: "Personal", name: "Personal"), at: 0)
+                }
+                
                 return profiles
             }
         } catch {
-            print("Error discovering Safari profiles: \(error)")
+            print("Error reading Safari SQLite: \(error)")
         }
         
-        return []
+        return [BrowserProfile(id: "Personal", name: "Personal")]
     }
     
     private static func discoverFirefoxProfiles(at url: URL) -> [BrowserProfile] {
