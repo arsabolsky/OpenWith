@@ -90,33 +90,52 @@ class AppDiscovery {
     }
     
     private static func discoverFirefoxProfiles(at url: URL) -> [BrowserProfile] {
+        let fileManager = FileManager.default
+        var discoveredProfiles: [String: String] = [:] // Path -> Name
+        
+        // 1. Try profiles.ini first (Official Source)
         let iniUrl = url.appendingPathComponent("profiles.ini")
-        guard let content = try? String(contentsOf: iniUrl, encoding: .utf8) else { return [] }
-        
-        var profiles: [BrowserProfile] = []
-        let lines = content.components(separatedBy: .newlines)
-        
-        var currentProfileName: String?
-        
-        for line in lines {
-            let trimmed = line.trimmingCharacters(in: .whitespaces)
-            if trimmed.starts(with: "[Profile") {
-                // Starting a new profile section
-                if let name = currentProfileName {
-                    profiles.append(BrowserProfile(id: name, name: name))
+        if let content = try? String(contentsOf: iniUrl, encoding: .utf8) {
+            let sections = content.components(separatedBy: "[Profile")
+            for section in sections {
+                let lines = section.components(separatedBy: .newlines)
+                var name: String?
+                var path: String?
+                for line in lines {
+                    if line.starts(with: "Name=") {
+                        name = line.replacingOccurrences(of: "Name=", with: "")
+                    } else if line.starts(with: "Path=") {
+                        path = line.replacingOccurrences(of: "Path=", with: "")
+                    }
                 }
-                currentProfileName = nil
-            } else if trimmed.starts(with: "Name=") {
-                currentProfileName = trimmed.replacingOccurrences(of: "Name=", with: "")
+                if let n = name, let p = path {
+                    discoveredProfiles[p] = n
+                }
             }
         }
         
-        // Add the last one
-        if let name = currentProfileName {
-            profiles.append(BrowserProfile(id: name, name: name))
+        // 2. Scan Profiles folder for dangling/unlisted profiles
+        let profilesDir = url.appendingPathComponent("Profiles")
+        if let contents = try? fileManager.contentsOfDirectory(at: profilesDir, includingPropertiesForKeys: nil) {
+            for itemUrl in contents {
+                let folderName = itemUrl.lastPathComponent
+                let relativePath = "Profiles/\(folderName)"
+                
+                // If not in INI, try to extract a name from the folder name
+                // Format: [random].[name] -> e.g. eRt2OTh8.Profile 1
+                if discoveredProfiles[relativePath] == nil {
+                    let parts = folderName.components(separatedBy: ".")
+                    if parts.count > 1 {
+                        let extractedName = parts.suffix(from: 1).joined(separator: ".")
+                        discoveredProfiles[relativePath] = extractedName
+                    } else {
+                        discoveredProfiles[relativePath] = folderName
+                    }
+                }
+            }
         }
         
-        return profiles.sorted { $0.name < $1.name }
+        return discoveredProfiles.map { BrowserProfile(id: $1, name: $1) }.sorted { $0.name < $1.name }
     }
     
     private static func parseChromiumProfiles(at url: URL) -> [BrowserProfile] {
