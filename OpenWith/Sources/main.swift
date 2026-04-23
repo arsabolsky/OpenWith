@@ -138,6 +138,7 @@ class AppDelegate: NSObject, NSApplicationDelegate, ObservableObject {
         pickerWindow?.makeKeyAndOrderFront(nil)
         NSApp.activate(ignoringOtherApps: true)
     }
+
     func open(url: URL, in app: ApplicationInfo, profile: BrowserProfile? = nil) {
         if app.bundleIdentifier == "com.apple.Safari" && profile != nil {
             openSafari(url: url, profile: profile!)
@@ -145,7 +146,21 @@ class AppDelegate: NSObject, NSApplicationDelegate, ObservableObject {
         }
         
         let configuration = NSWorkspace.OpenConfiguration()
-...
+        if let profile = profile {
+            if app.bundleIdentifier == "org.mozilla.firefox" {
+                configuration.arguments = ["-P", profile.id]
+            } else {
+                configuration.arguments = ["--profile-directory=\(profile.id)"]
+            }
+        }
+        
+        NSWorkspace.shared.open([url], withApplicationAt: app.path, configuration: configuration) { _, error in
+            if let error = error {
+                print("Error opening URL: \(error.localizedDescription)")
+            }
+        }
+    }
+
     func openSafari(url: URL, profile: BrowserProfile) {
         let script = """
         tell application "Safari"
@@ -177,7 +192,6 @@ class AppDelegate: NSObject, NSApplicationDelegate, ObservableObject {
         }
     }
 
-    
     func closePicker() {
         pickerWindow?.orderOut(nil)
     }
