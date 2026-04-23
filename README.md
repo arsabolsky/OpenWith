@@ -51,6 +51,13 @@ OpenWith uses the same reverse-engineered logic found in premium tools like Open
 
 ---
 
+## 🛠️ Future Plans
+- [ ] Mailto link routing.
+- [ ] Modifier key overrides (e.g., hold ⌥ to force picker).
+- [ ] Customizable theme colors.
+
+---
+
 ## 🤝 Contributing
 
 This is a community-driven alternative to paid routing apps. Contributions, bug reports, and feature requests are welcome!
