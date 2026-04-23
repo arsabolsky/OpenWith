@@ -49,21 +49,18 @@ class AppDiscovery {
         let fileManager = FileManager.default
         let supportDir = fileManager.urls(for: .applicationSupportDirectory, in: .userDomainMask).first!
         
-        // Strategy: Only use paths that are likely related to this specific app.
-        var searchPaths: [String] = []
+        let id = bundleId.lowercased()
         
-        // 1. Bundle ID related
-        searchPaths.append(bundleId)
-        if bundleId.contains(".") {
-            searchPaths.append(bundleId.components(separatedBy: ".").last!)
+        // 1. Firefox Handling
+        if id.contains("mozilla.firefox") || id.contains("org.mozilla.firefox") {
+            // Check both Firefox and Firefox/Profiles
+            let firefoxDir = supportDir.appendingPathComponent("Firefox")
+            return discoverFirefoxProfiles(at: firefoxDir)
         }
         
-        // 2. App Name related
-        searchPaths.append(appName)
-        searchPaths.append("Google/\(appName)")
-        searchPaths.append("BraveSoftware/\(appName)-Browser")
+        // 2. Chromium Handling
+        var searchPaths: [String] = []
         
-        // 3. Known hardcoded mappings for major browsers to ensure accuracy
         switch bundleId {
         case "com.google.Chrome": searchPaths.append("Google/Chrome")
         case "com.google.Chrome.canary": searchPaths.append("Google/Chrome Canary")
@@ -72,15 +69,14 @@ class AppDiscovery {
         case "com.brave.Browser": searchPaths.append("BraveSoftware/Brave-Browser")
         case "company.thebrowser.Browser": searchPaths.append("Arc")
         case "com.vivaldi.Vivaldi": searchPaths.append("Vivaldi")
-        case "org.mozilla.firefox": 
-            return discoverFirefoxProfiles(at: supportDir.appendingPathComponent("Firefox"))
-        default: break
+        case "net.imput.helium": searchPaths.append("net.imput.helium")
+        default:
+            // For other apps, only check if the directory matches name or bundle exactly
+            searchPaths.append(bundleId)
+            searchPaths.append(appName)
         }
         
-        // Unique the search paths to avoid redundant checks
-        let uniquePaths = Array(Set(searchPaths))
-        
-        for subPath in uniquePaths {
+        for subPath in searchPaths {
             let localStateUrl = supportDir.appendingPathComponent(subPath).appendingPathComponent("Local State")
             if fileManager.fileExists(atPath: localStateUrl.path) {
                 let profiles = parseChromiumProfiles(at: localStateUrl)
@@ -100,19 +96,24 @@ class AppDiscovery {
         var profiles: [BrowserProfile] = []
         let lines = content.components(separatedBy: .newlines)
         
-        var currentName: String?
+        var currentProfileName: String?
         
         for line in lines {
-            if line.starts(with: "Name=") {
-                currentName = line.replacingOccurrences(of: "Name=", with: "")
-            } else if line.isEmpty && currentName != nil {
-                profiles.append(BrowserProfile(id: currentName!, name: currentName!))
-                currentName = nil
+            let trimmed = line.trimmingCharacters(in: .whitespaces)
+            if trimmed.starts(with: "[Profile") {
+                // Starting a new profile section
+                if let name = currentProfileName {
+                    profiles.append(BrowserProfile(id: name, name: name))
+                }
+                currentProfileName = nil
+            } else if trimmed.starts(with: "Name=") {
+                currentProfileName = trimmed.replacingOccurrences(of: "Name=", with: "")
             }
         }
         
-        if let last = currentName {
-            profiles.append(BrowserProfile(id: last, name: last))
+        // Add the last one
+        if let name = currentProfileName {
+            profiles.append(BrowserProfile(id: name, name: name))
         }
         
         return profiles.sorted { $0.name < $1.name }
