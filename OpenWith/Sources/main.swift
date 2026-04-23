@@ -186,13 +186,23 @@ class AppDelegate: NSObject, NSApplicationDelegate, ObservableObject {
                     try
                         click menu item menuName of menu 1 of menu bar item "File" of menu bar 1
                     on error
-                        display alert "Could not find profile window for \(profile.name)"
                         return
                     end try
                 end tell
             end tell
-            delay 0.5
-            set URL of document 1 of window 1 to "\(url.absoluteString)"
+            
+            -- Wait for the new window/document to be ready
+            repeat 20 times
+                try
+                    tell application "Safari"
+                        if (count of windows) > 0 then
+                            set URL of document 1 of window 1 to "\(url.absoluteString)"
+                            return
+                        end if
+                    end tell
+                end try
+                delay 0.1
+            end repeat
         end tell
         """
         
