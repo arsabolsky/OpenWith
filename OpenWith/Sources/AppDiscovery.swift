@@ -53,6 +53,8 @@ class AppDiscovery {
         var possiblePaths: [String] = []
         
         switch bundleId {
+        case "com.apple.Safari":
+            return discoverSafariProfiles()
         case "com.google.Chrome": possiblePaths = ["Google/Chrome"]
         case "com.google.Chrome.canary": possiblePaths = ["Google/Chrome Canary"]
         case "org.chromium.Chromium": possiblePaths = ["Chromium"]
@@ -93,5 +95,38 @@ class AppDiscovery {
         }
         
         return discoveredProfiles.sorted { $0.name < $1.name }
+    }
+
+    private static func discoverSafariProfiles() -> [BrowserProfile] {
+        let scriptSource = """
+        tell application "System Events"
+            if exists process "Safari" then
+                tell process "Safari"
+                    if exists menu bar item "Profiles" of menu bar 1 then
+                        get name of menu items of menu 1 of menu bar item "Profiles" of menu bar 1
+                    else
+                        return {}
+                    end if
+                end tell
+            else
+                return {}
+            end if
+        end tell
+        """
+        
+        var profiles: [BrowserProfile] = []
+        if let script = NSAppleScript(source: scriptSource) {
+            var error: NSDictionary?
+            let result = script.executeAndReturnError(&error)
+            if error == nil {
+                for i in 1...result.numberOfItems {
+                    if let name = result.atIndex(i)?.stringValue, !name.isEmpty {
+                        profiles.append(BrowserProfile(id: name, name: name))
+                    }
+                }
+            }
+        }
+        
+        return profiles
     }
 }

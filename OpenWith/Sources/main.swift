@@ -140,6 +140,11 @@ class AppDelegate: NSObject, NSApplicationDelegate, ObservableObject {
     }
     
     func open(url: URL, in app: ApplicationInfo, profile: BrowserProfile? = nil) {
+        if app.bundleIdentifier == "com.apple.Safari", let profile = profile {
+            self.launchSafari(url: url, profile: profile)
+            return
+        }
+        
         let configuration = NSWorkspace.OpenConfiguration()
         if let profile = profile {
             configuration.arguments = ["--profile-directory=\(profile.id)"]
@@ -147,6 +152,30 @@ class AppDelegate: NSObject, NSApplicationDelegate, ObservableObject {
         NSWorkspace.shared.open([url], withApplicationAt: app.path, configuration: configuration) { _, error in
             if let error = error {
                 print("Error opening URL: \(error.localizedDescription)")
+            }
+        }
+    }
+
+    func launchSafari(url: URL, profile: BrowserProfile) {
+        let scriptSource = """
+        tell application "Safari"
+            activate
+            tell application "System Events"
+                tell process "Safari"
+                    if exists menu bar item "Profiles" of menu bar 1 then
+                        click menu item "\(profile.name)" of menu 1 of menu bar item "Profiles" of menu bar 1
+                    end if
+                end tell
+            end tell
+            open location "\(url.absoluteString)"
+        end tell
+        """
+        
+        if let script = NSAppleScript(source: scriptSource) {
+            var error: NSDictionary?
+            script.executeAndReturnError(&error)
+            if let err = error {
+                print("Safari AppleScript error: \(err)")
             }
         }
     }
