@@ -119,9 +119,12 @@ class AppDiscovery {
             var error: NSDictionary?
             let result = script.executeAndReturnError(&error)
             if error == nil {
-                for i in 1...result.numberOfItems {
-                    if let name = result.atIndex(i)?.stringValue, !name.isEmpty {
-                        profiles.append(BrowserProfile(id: name, name: name))
+                let count = result.numberOfItems
+                if count > 0 {
+                    for i in 1...count {
+                        if let name = result.atIndex(i)?.stringValue, !name.isEmpty {
+                            profiles.append(BrowserProfile(id: name, name: name))
+                        }
                     }
                 }
             }
