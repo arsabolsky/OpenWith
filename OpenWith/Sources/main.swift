@@ -209,10 +209,14 @@ class AppDelegate: NSObject, NSApplicationDelegate, ObservableObject {
         }
 
         let scriptSource = """
-        tell application "Safari"
-            activate
-            tell application "System Events"
-                tell process "Safari"
+        tell application "Safari" to activate
+        delay 0.3
+        
+        tell application "System Events"
+            tell process "Safari"
+                set frontmost to true
+                try
+                    -- Try Path 1: File > New Window > [Profile]
                     try
                         tell menu bar item "File" of menu bar 1
                             tell menu 1
@@ -221,12 +225,27 @@ class AppDelegate: NSObject, NSApplicationDelegate, ObservableObject {
                                 end tell
                             end tell
                         end tell
-                    on error errMsg
-                        log "Error launching Safari profile: " & errMsg
+                    on error
+                        -- Try Path 2: File > [Profile] (Direct)
+                        tell menu bar item "File" of menu bar 1
+                            tell menu 1
+                                click menu item "\(profile.id)"
+                            end tell
+                        end tell
                     end try
-                end tell
+                    
+                    delay 0.5 -- Essential for window creation stability
+                    
+                    -- Phase 2: Inject URL via keystrokes to target the correct profile window
+                    keystroke "l" using {command down}
+                    delay 0.2
+                    keystroke "\(url.absoluteString)"
+                    delay 0.1
+                    keystroke return
+                on error errMsg
+                    log "Error launching Safari profile: " & errMsg
+                end try
             end tell
-            open location "\(url.absoluteString)"
         end tell
         """
         

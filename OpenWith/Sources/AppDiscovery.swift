@@ -98,55 +98,114 @@ class AppDiscovery {
     }
 
     private static func discoverSafariProfiles() -> [BrowserProfile] {
-        print("Discovering Safari profiles from File > New Window submenu...")
+        print("Discovering Safari profiles via dynamic menu scanning...")
         let scriptSource = """
         tell application "System Events"
-            tell process "Safari"
-                try
-                    tell menu bar item "File" of menu bar 1
-                        tell menu 1
-                            tell menu item "New Window"
-                                return name of menu items of menu 1
-                            end tell
+            if exists process "Safari" then
+                tell process "Safari"
+                    set foundNames to {}
+                    try
+                        -- Strategy: Scan the 'File' menu for 'New [Profile] Window'
+                        tell menu 1 of menu bar item "File" of menu bar 1
+                            -- Check direct menu items first
+                            set allItems to name of every menu item
+                            repeat with itemName in allItems
+                                if itemName starts with "New " and itemName ends with " Window" then
+                                    copy itemName to end of foundNames
+                                end if
+                            end repeat
+                            
+                            -- Also check submenus of 'New Window' just in case
+                            try
+                                set subItems to name of menu items of menu 1 of menu item "New Window"
+                                repeat with subName in subItems
+                                    if subName is not missing value and subName is not "" then
+                                        copy subName to end of foundNames
+                                    end if
+                                end repeat
+                            end try
                         end tell
-                    end tell
-                on error
-                    return {}
-                end try
-            end tell
+                    on error
+                        return {"_ERROR_"}
+                    end try
+                    return foundNames
+                end tell
+            else
+                return {"_SAFARI_NOT_RUNNING_"}
+            end if
         end tell
         """
         
-        var profiles: [BrowserProfile] = []
+        var discoveredProfiles: [BrowserProfile] = []
         if let script = NSAppleScript(source: scriptSource) {
             var error: NSDictionary?
             let result = script.executeAndReturnError(&error)
+            
             if let err = error {
                 print("Safari Profile Discovery AppleScript Error: \(err)")
-                fflush(stdout)
             } else {
-                print("Safari Profile Discovery Raw Result: \(result)")
                 let count = result.numberOfItems
                 if count >= 1 {
-                    for i in 1...count {
-                        if let fullName = result.atIndex(i)?.stringValue, !fullName.isEmpty {
-                            print("Found Safari Profile Candidate: \(fullName)")
-                            
-                            var displayName = fullName
-                            if displayName.hasPrefix("New ") {
-                                displayName = String(displayName.dropFirst(4))
+                    let firstItem = result.atIndex(1)?.stringValue
+                    if firstItem == "_SAFARI_NOT_RUNNING_" {
+                        print("Safari is not running. Using cached profiles.")
+                    } else if firstItem == "_ERROR_" {
+                        print("Error during Safari menu scanning. Using cached profiles.")
+                    } else {
+                        var namesSet = Set<String>()
+                        for i in 1...count {
+                            if let fullName = result.atIndex(i)?.stringValue, !fullName.isEmpty {
+                                if namesSet.contains(fullName) { continue }
+                                namesSet.insert(fullName)
+                                
+                                var id = fullName
+                                var displayName = fullName
+                                
+                                if fullName.hasPrefix("New ") && fullName.hasSuffix(" Window") {
+                                    displayName = String(fullName.dropFirst(4).dropLast(7))
+                                } else {
+                                    id = "New \(fullName) Window"
+                                    displayName = fullName
+                                }
+                                
+                                // Filter out static items
+                                if displayName == "Tab" || displayName == "Window" || displayName == "Private Window" || displayName == "Empty Tab Group" {
+                                    continue
+                                }
+                                
+                                discoveredProfiles.append(BrowserProfile(id: id, name: displayName))
                             }
-                            if displayName.hasSuffix(" Window") {
-                                displayName = String(displayName.dropLast(7))
-                            }
-                            
-                            profiles.append(BrowserProfile(id: fullName, name: displayName))
+                        }
+                        
+                        if !discoveredProfiles.isEmpty {
+                            print("Successfully discovered \(discoveredProfiles.count) Safari profiles live.")
+                            saveSafariProfilesToCache(discoveredProfiles)
                         }
                     }
                 }
-                fflush(stdout)
             }
         }
-        return profiles
+        
+        let finalProfiles = discoveredProfiles.isEmpty ? loadSafariProfilesFromCache() : discoveredProfiles
+        if discoveredProfiles.isEmpty && !finalProfiles.isEmpty {
+            print("Using \(finalProfiles.count) Safari profiles from persistent cache.")
+        }
+        
+        fflush(stdout)
+        return finalProfiles
+    }
+
+    private static func saveSafariProfilesToCache(_ profiles: [BrowserProfile]) {
+        if let encoded = try? JSONEncoder().encode(profiles) {
+            UserDefaults.standard.set(encoded, forKey: "CachedSafariProfiles")
+        }
+    }
+
+    private static func loadSafariProfilesFromCache() -> [BrowserProfile] {
+        if let data = UserDefaults.standard.data(forKey: "CachedSafariProfiles"),
+           let decoded = try? JSONDecoder().decode([BrowserProfile].self, from: data) {
+            return decoded
+        }
+        return []
     }
 }

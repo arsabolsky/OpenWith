@@ -40,6 +40,13 @@ struct SettingsView: View {
                         }
                         .padding(.top, 4)
                     }
+                    
+                    Button(action: {
+                        appDelegate.refreshBrowserCache()
+                    }) {
+                        Label("Refresh Profiles", systemImage: "arrow.clockwise")
+                    }
+                    .padding(.top, 4)
                 }
                 .padding(8)
             }
