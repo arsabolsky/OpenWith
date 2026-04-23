@@ -96,14 +96,11 @@ class AppDiscovery {
 
     private static func discoverSafariProfiles() -> [BrowserProfile] {
         let script = """
-        tell application "Safari" to activate
-        delay 0.1
         tell application "System Events"
             tell process "Safari"
                 try
                     set fileMenu to menu 1 of menu bar item "File" of menu bar 1
-                    set menuItems to name of menu items of fileMenu
-                    return menuItems
+                    return name of menu items of fileMenu
                 on error
                     return {}
                 end try
@@ -123,16 +120,19 @@ class AppDiscovery {
             let data = pipe.fileHandleForReading.readDataToEndOfFile()
             if let output = String(data: data, encoding: .utf8) {
                 var profiles: [BrowserProfile] = []
+                // The output is "item1, item2, item3"
                 let items = output.components(separatedBy: ", ")
                 for item in items {
                     let name = item.trimmingCharacters(in: .whitespacesAndNewlines)
-                    // Safari profiles appear as "New [Name] Window" in the File menu
-                    if name.starts(with: "New ") && name.contains(" Window") {
-                        var profileName = name.replacingOccurrences(of: "New ", with: "")
-                        profileName = profileName.replacingOccurrences(of: " Window", with: "")
+                    
+                    // Filter for "New [Profile] Window"
+                    if name.hasPrefix("New ") && name.hasSuffix(" Window") {
+                        let profileName = name.replacingOccurrences(of: "New ", with: "")
+                                              .replacingOccurrences(of: " Window", with: "")
                         
-                        // Ignore standard items
-                        if profileName == "Private" || profileName == "" || profileName == "Tab" || profileName == "Window" { continue }
+                        // Ignore standard non-profile items
+                        let standardNames = ["Private", "Tab", "Window", "Window to Group", "Private Window", ""]
+                        if standardNames.contains(profileName) { continue }
                         
                         profiles.append(BrowserProfile(id: profileName, name: profileName))
                     }
