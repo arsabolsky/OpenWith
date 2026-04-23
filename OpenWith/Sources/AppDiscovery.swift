@@ -18,6 +18,8 @@ class AppDiscovery {
     static func getInstalledBrowsers() -> [ApplicationInfo] {
         let workspace = NSWorkspace.shared
         let httpsUrl = URL(string: "https://")!
+        
+        // Dynamically find EVERY app registered for HTTPS
         let appUrls = workspace.urlsForApplications(toOpen: httpsUrl)
         
         var apps: [ApplicationInfo] = []
@@ -32,10 +34,8 @@ class AppDiscovery {
             
             var appInfo = ApplicationInfo(name: name, bundleIdentifier: bundleId, path: path, icon: icon)
             
-            // Discover profiles for Chromium-based browsers
-            if isChromiumBased(bundleId: bundleId) {
-                appInfo.profiles = discoverChromiumProfiles(bundleId: bundleId)
-            }
+            // Dynamically attempt to find profiles if it looks like a Chromium/Electron app
+            appInfo.profiles = discoverProfiles(for: bundleId, appName: name)
             
             if !apps.contains(where: { $0.bundleIdentifier == bundleId }) {
                 apps.append(appInfo)
@@ -45,36 +45,32 @@ class AppDiscovery {
         return apps.sorted { $0.name < $1.name }
     }
     
-    private static func isChromiumBased(bundleId: String) -> Bool {
-        let chromiumIds = [
-            "com.google.Chrome",
-            "com.google.Chrome.canary",
-            "org.chromium.Chromium",
-            "com.microsoft.edgemac",
-            "com.brave.Browser",
-            "company.thebrowser.Browser", // Arc
-            "com.vivaldi.Vivaldi"
-        ]
-        return chromiumIds.contains(bundleId)
-    }
-    
-    private static func discoverChromiumProfiles(bundleId: String) -> [BrowserProfile] {
-        let supportDir = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first!
-        let browserSubDir: String
+    private static func discoverProfiles(for bundleId: String, appName: String) -> [BrowserProfile] {
+        let fileManager = FileManager.default
+        let supportDir = fileManager.urls(for: .applicationSupportDirectory, in: .userDomainMask).first!
         
-        switch bundleId {
-        case "com.google.Chrome": browserSubDir = "Google/Chrome"
-        case "com.google.Chrome.canary": browserSubDir = "Google/Chrome Canary"
-        case "org.chromium.Chromium": browserSubDir = "Chromium"
-        case "com.microsoft.edgemac": browserSubDir = "Microsoft Edge"
-        case "com.brave.Browser": browserSubDir = "BraveSoftware/Brave-Browser"
-        case "company.thebrowser.Browser": browserSubDir = "Arc"
-        case "com.vivaldi.Vivaldi": browserSubDir = "Vivaldi"
-        default: return []
+        // Common sub-path patterns for Chromium-based apps
+        let possiblePaths = [
+            "Google/\(appName)",
+            appName,
+            "Chromium",
+            "BraveSoftware/\(appName)-Browser",
+            "Microsoft Edge",
+            "Vivaldi"
+        ]
+        
+        for subPath in possiblePaths {
+            let localStateUrl = supportDir.appendingPathComponent(subPath).appendingPathComponent("Local State")
+            if fileManager.fileExists(atPath: localStateUrl.path) {
+                return parseChromiumProfiles(at: localStateUrl)
+            }
         }
         
-        let localStateUrl = supportDir.appendingPathComponent(browserSubDir).appendingPathComponent("Local State")
-        guard let data = try? Data(contentsOf: localStateUrl),
+        return []
+    }
+    
+    private static func parseChromiumProfiles(at url: URL) -> [BrowserProfile] {
+        guard let data = try? Data(contentsOf: url),
               let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
               let profile = json["profile"] as? [String: Any],
               let infoCache = profile["info_cache"] as? [String: Any] else {
