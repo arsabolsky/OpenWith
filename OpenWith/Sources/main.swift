@@ -84,12 +84,12 @@ class AppDelegate: NSObject, NSApplicationDelegate, ObservableObject {
             return
         }
         
-        print("Intercepted URL: \(url)")
+        // print("Intercepted URL: \(url)")
         
         // Rules Engine Matching
         if let matchedRule = RulesEngine.match(url: url, rules: rules),
            let appUrl = NSWorkspace.shared.urlForApplication(withBundleIdentifier: matchedRule.targetAppBundleId) {
-            print("Auto-routing to \(matchedRule.targetAppBundleId) due to rule: \(matchedRule.name)")
+            // print("Auto-routing to \(matchedRule.targetAppBundleId) due to rule: \(matchedRule.name)")
             
             let appInfo = ApplicationInfo(name: matchedRule.name, bundleIdentifier: matchedRule.targetAppBundleId, path: appUrl, icon: nil)
             var profile: BrowserProfile? = nil
