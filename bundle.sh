@@ -24,7 +24,7 @@ echo "Successfully bundled $APP_NAME."
 
 # Quit the old app if it's running
 echo "Stopping old version of OpenWith..."
-osascript -e 'quit app "OpenWith"' 2>/dev/null || true
+pkill -x "OpenWith" || true
 sleep 1
 
 # Move to Applications
