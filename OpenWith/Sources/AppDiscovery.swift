@@ -58,7 +58,12 @@ class AppDiscovery {
             return discoverFirefoxProfiles(at: firefoxDir)
         }
         
-        // 2. Chromium Handling
+        // 2. Safari Handling
+        if id.contains("com.apple.safari") {
+            return discoverSafariProfiles()
+        }
+        
+        // 3. Chromium Handling
         var searchPaths: [String] = []
         
         switch bundleId {
@@ -84,6 +89,58 @@ class AppDiscovery {
                     return profiles
                 }
             }
+        }
+        
+        return []
+    }
+
+    private static func discoverSafariProfiles() -> [BrowserProfile] {
+        let script = """
+        tell application "Safari" to activate
+        delay 0.1
+        tell application "System Events"
+            tell process "Safari"
+                try
+                    set fileMenu to menu 1 of menu bar item "File" of menu bar 1
+                    set menuItems to name of menu items of fileMenu
+                    return menuItems
+                on error
+                    return {}
+                end try
+            end tell
+        end tell
+        """
+        
+        let task = Process()
+        task.launchPath = "/usr/bin/osascript"
+        task.arguments = ["-e", script]
+        
+        let pipe = Pipe()
+        task.standardOutput = pipe
+        
+        do {
+            try task.run()
+            let data = pipe.fileHandleForReading.readDataToEndOfFile()
+            if let output = String(data: data, encoding: .utf8) {
+                var profiles: [BrowserProfile] = []
+                let items = output.components(separatedBy: ", ")
+                for item in items {
+                    let name = item.trimmingCharacters(in: .whitespacesAndNewlines)
+                    // Safari profiles appear as "New [Name] Window" in the File menu
+                    if name.starts(with: "New ") && name.contains(" Window") {
+                        var profileName = name.replacingOccurrences(of: "New ", with: "")
+                        profileName = profileName.replacingOccurrences(of: " Window", with: "")
+                        
+                        // Ignore standard items
+                        if profileName == "Private" || profileName == "" || profileName == "Tab" || profileName == "Window" { continue }
+                        
+                        profiles.append(BrowserProfile(id: profileName, name: profileName))
+                    }
+                }
+                return profiles
+            }
+        } catch {
+            print("Error discovering Safari profiles: \(error)")
         }
         
         return []

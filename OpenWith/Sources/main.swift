@@ -139,19 +139,41 @@ class AppDelegate: NSObject, NSApplicationDelegate, ObservableObject {
         NSApp.activate(ignoringOtherApps: true)
     }
     func open(url: URL, in app: ApplicationInfo, profile: BrowserProfile? = nil) {
-        let configuration = NSWorkspace.OpenConfiguration()
-        if let profile = profile {
-            if app.bundleIdentifier == "org.mozilla.firefox" {
-                configuration.arguments = ["-P", profile.id]
-            } else {
-                // Chromium browsers use --profile-directory
-                configuration.arguments = ["--profile-directory=\(profile.id)"]
-            }
+        if app.bundleIdentifier == "com.apple.Safari" && profile != nil {
+            openSafari(url: url, profile: profile!)
+            return
         }
-        NSWorkspace.shared.open([url], withApplicationAt: app.path, configuration: configuration) { _, error in
-            if let error = error {
-                print("Error opening URL: \(error.localizedDescription)")
-            }
+        
+        let configuration = NSWorkspace.OpenConfiguration()
+...
+    func openSafari(url: URL, profile: BrowserProfile) {
+        let script = """
+        tell application "Safari"
+            activate
+            tell application "System Events"
+                tell process "Safari"
+                    set menuName to "New \(profile.name) Window"
+                    try
+                        click menu item menuName of menu 1 of menu bar item "File" of menu bar 1
+                    on error
+                        display alert "Could not find profile window for \(profile.name)"
+                        return
+                    end try
+                end tell
+            end tell
+            delay 0.5
+            set URL of document 1 of window 1 to "\(url.absoluteString)"
+        end tell
+        """
+        
+        let task = Process()
+        task.launchPath = "/usr/bin/osascript"
+        task.arguments = ["-e", script]
+        
+        do {
+            try task.run()
+        } catch {
+            print("Error launching Safari profile: \(error)")
         }
     }
 
