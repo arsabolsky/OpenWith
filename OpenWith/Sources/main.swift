@@ -4,14 +4,18 @@ import SwiftUI
 class AppDelegate: NSObject, NSApplicationDelegate, ObservableObject {
     var statusItem: NSStatusItem?
     var pickerWindow: NSWindow?
-    @Published var rules: [Rule] = []
+    
     @Published var isAccessibilityTrusted: Bool = false
     @Published var isAutomationAllowed: Bool = false
     @Published var cachedBrowsers: [ApplicationInfo] = []
+    
+    @Published var hiddenBundleIds: Set<String> = []
+    @Published var hiddenProfileIds: Set<String> = []
+    
     private var isRefreshingCache = false
 
     func applicationDidFinishLaunching(_ notification: Notification) {
-        loadRules()
+        loadHiddenItems()
         checkPermissions()
         refreshBrowserCache()
         
@@ -30,6 +34,13 @@ class AppDelegate: NSObject, NSApplicationDelegate, ObservableObject {
             forEventClass: AEEventClass(kInternetEventClass),
             andEventID: AEEventID(kAEGetURL)
         )
+        
+        // Check for initial setup
+        if !UserDefaults.standard.bool(forKey: "SetupCompleted") {
+            DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) {
+                self.openSetup()
+            }
+        }
     }
 
     func applicationDidBecomeActive(_ notification: Notification) {
@@ -51,22 +62,18 @@ class AppDelegate: NSObject, NSApplicationDelegate, ObservableObject {
         }
     }
 
-    func loadRules() {
-        if let data = UserDefaults.standard.data(forKey: "Rules"),
-           let decoded = try? JSONDecoder().decode([Rule].self, from: data) {
-            self.rules = decoded
-        } else {
-            // Default rules for testing
-            self.rules = [
-                Rule(name: "Zoom", type: .domain, pattern: "zoom.us", targetAppBundleId: "us.zoom.xos")
-            ]
+    func loadHiddenItems() {
+        if let bundles = UserDefaults.standard.stringArray(forKey: "HiddenBundleIds") {
+            self.hiddenBundleIds = Set(bundles)
+        }
+        if let profiles = UserDefaults.standard.stringArray(forKey: "HiddenProfileIds") {
+            self.hiddenProfileIds = Set(profiles)
         }
     }
 
-    func saveRules() {
-        if let encoded = try? JSONEncoder().encode(rules) {
-            UserDefaults.standard.set(encoded, forKey: "Rules")
-        }
+    func saveHiddenItems() {
+        UserDefaults.standard.set(Array(hiddenBundleIds), forKey: "HiddenBundleIds")
+        UserDefaults.standard.set(Array(hiddenProfileIds), forKey: "HiddenProfileIds")
     }
 
     func checkPermissions() {
@@ -90,11 +97,9 @@ class AppDelegate: NSObject, NSApplicationDelegate, ObservableObject {
         let options = [kAXTrustedCheckOptionPrompt.takeRetainedValue() as String: true]
         AXIsProcessTrustedWithOptions(options as CFDictionary)
         
-        // Triggering an AppleScript usually prompts for Automation if not determined
         let script = NSAppleScript(source: "tell application \"Safari\" to get name")
         script?.executeAndReturnError(nil)
         
-        // Polling for status change might be overkill, let's just check again after a short delay
         DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) {
             self.checkPermissions()
         }
@@ -112,15 +117,10 @@ class AppDelegate: NSObject, NSApplicationDelegate, ObservableObject {
 
     @objc func openSettings() {
         if settingsWindow == nil {
-            let view = SettingsView(appDelegate: self, rules: Binding(
-                get: { self.rules },
-                set: { self.rules = $0 }
-            ), onSave: {
-                self.saveRules()
-            })
+            let view = SettingsView(appDelegate: self)
             
             settingsWindow = NSWindow(
-                contentRect: NSRect(x: 0, y: 0, width: 500, height: 400),
+                contentRect: NSRect(x: 0, y: 0, width: 500, height: 500),
                 styleMask: [.titled, .closable, .miniaturizable, .resizable],
                 backing: .buffered,
                 defer: false
@@ -128,9 +128,32 @@ class AppDelegate: NSObject, NSApplicationDelegate, ObservableObject {
             settingsWindow?.title = "OpenWith Settings"
             settingsWindow?.center()
             settingsWindow?.contentView = NSHostingView(rootView: view)
+            settingsWindow?.isReleasedWhenClosed = false
         }
         
         settingsWindow?.makeKeyAndOrderFront(nil)
+        NSApp.activate(ignoringOtherApps: true)
+    }
+    
+    var setupWindow: NSWindow?
+    
+    @objc func openSetup() {
+        if setupWindow == nil {
+            let view = SetupView(appDelegate: self)
+            
+            setupWindow = NSWindow(
+                contentRect: NSRect(x: 0, y: 0, width: 400, height: 450),
+                styleMask: [.titled, .closable],
+                backing: .buffered,
+                defer: false
+            )
+            setupWindow?.title = "Welcome to OpenWith"
+            setupWindow?.center()
+            setupWindow?.contentView = NSHostingView(rootView: view)
+            setupWindow?.isReleasedWhenClosed = false
+        }
+        
+        setupWindow?.makeKeyAndOrderFront(nil)
         NSApp.activate(ignoringOtherApps: true)
     }
 
@@ -142,31 +165,26 @@ class AppDelegate: NSObject, NSApplicationDelegate, ObservableObject {
         
         print("Intercepted URL: \(url)")
         
-        // Rules Engine Matching
-        if let matchedRule = RulesEngine.match(url: url, rules: rules),
-           let appUrl = NSWorkspace.shared.urlForApplication(withBundleIdentifier: matchedRule.targetAppBundleId) {
-            print("Auto-routing to \(matchedRule.targetAppBundleId) due to rule: \(matchedRule.name)")
-            
-            let appInfo = ApplicationInfo(name: matchedRule.name, bundleIdentifier: matchedRule.targetAppBundleId, path: appUrl, icon: nil)
-            var profile: BrowserProfile? = nil
-            if let profileId = matchedRule.targetProfileId {
-                profile = BrowserProfile(id: profileId, name: "")
-            }
-            
-            self.open(url: url, in: appInfo, profile: profile)
-            return
-        }
-        
         DispatchQueue.main.async {
             self.showAppPicker(for: url)
         }
     }
     
     func showAppPicker(for url: URL) {
-        let contentView = PickerView(url: url, apps: cachedBrowsers) { selectedApp, profile in
+        // Filter out hidden items
+        let visibleApps = cachedBrowsers.compactMap { app -> ApplicationInfo? in
+            if hiddenBundleIds.contains(app.bundleIdentifier) { return nil }
+            var filteredApp = app
+            filteredApp.profiles = app.profiles.filter { !hiddenProfileIds.contains($0.id) }
+            return filteredApp
+        }
+        
+        let contentView = PickerView(url: url, apps: visibleApps, onSelect: { selectedApp, profile in
             self.open(url: url, in: selectedApp, profile: profile)
             self.closePicker()
-        }
+        }, onCancel: {
+            self.closePicker()
+        })
         
         if pickerWindow == nil {
             pickerWindow = NSWindow(
@@ -179,11 +197,13 @@ class AppDelegate: NSObject, NSApplicationDelegate, ObservableObject {
             pickerWindow?.isOpaque = false
             pickerWindow?.backgroundColor = .clear
             pickerWindow?.hasShadow = true
+            
+            // Close when losing focus
+            NotificationCenter.default.addObserver(self, selector: #selector(closePicker), name: NSApplication.didResignActiveNotification, object: nil)
         }
         
         pickerWindow?.contentView = NSHostingView(rootView: contentView)
         
-        // Center on screen or follow mouse
         let mouseLocation = NSEvent.mouseLocation
         let windowWidth: CGFloat = 300
         let windowHeight: CGFloat = 400
@@ -200,7 +220,6 @@ class AppDelegate: NSObject, NSApplicationDelegate, ObservableObject {
         }
         
         if let profile = profile {
-            // For Chromium-based browsers, we use /usr/bin/open -na to ensure the profile flag is respected
             let chromiumIds = ["com.google.Chrome", "com.google.Chrome.canary", "org.chromium.Chromium", "com.microsoft.edgemac", "com.brave.Browser", "company.thebrowser.Browser", "com.vivaldi.Vivaldi", "net.imput.helium"]
             let isChromium = chromiumIds.contains(app.bundleIdentifier)
             let isFirefox = app.bundleIdentifier == "org.mozilla.firefox"
@@ -224,7 +243,6 @@ class AppDelegate: NSObject, NSApplicationDelegate, ObservableObject {
                     return
                 } catch {
                     print("Failed to launch \(app.name) profile via Process: \(error)")
-                    // Fallback to NSWorkspace if Process fails
                 }
             }
         }
@@ -257,7 +275,6 @@ class AppDelegate: NSObject, NSApplicationDelegate, ObservableObject {
             tell process "Safari"
                 set frontmost to true
                 try
-                    -- Phase 1: Create the profile window
                     try
                         tell menu bar item "File" of menu bar 1
                             tell menu 1
@@ -279,30 +296,25 @@ class AppDelegate: NSObject, NSApplicationDelegate, ObservableObject {
             end tell
         end tell
         
-        delay 0.6 -- Wait for the new window to be registered as a document
+        delay 0.6
         
         tell application "Safari"
             try
                 set URL of document 1 to theURL
             on error errMsg
                 log "Error setting URL: " & errMsg
-                open location theURL -- Final fallback
+                open location theURL
             end try
         end tell
         """
         
         if let script = NSAppleScript(source: scriptSource) {
             var error: NSDictionary?
-            let result = script.executeAndReturnError(&error)
-            if let err = error {
-                print("Safari Launch AppleScript Error: \(err)")
-            } else {
-                print("Safari Launch AppleScript Success: \(result)")
-            }
+            script.executeAndReturnError(&error)
         }
     }
     
-    func closePicker() {
+    @objc func closePicker() {
         pickerWindow?.orderOut(nil)
     }
 }

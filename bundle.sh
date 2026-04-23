@@ -13,9 +13,12 @@ RESOURCES_DIR="$CONTENTS_DIR/Resources"
 mkdir -p "$MACOS_DIR"
 mkdir -p "$RESOURCES_DIR"
 
-# Copy executable and Info.plist
+# Copy executable, Info.plist, and Icon
 cp "$BUILD_PATH" "$MACOS_DIR/"
 cp "OpenWith/Resources/Info.plist" "$CONTENTS_DIR/"
+if [ -f "OpenWith/Resources/AppIcon.icns" ]; then
+    cp "OpenWith/Resources/AppIcon.icns" "$RESOURCES_DIR/"
+fi
 
 echo "Successfully bundled $APP_NAME."
 
