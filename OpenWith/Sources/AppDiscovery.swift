@@ -95,17 +95,22 @@ class AppDiscovery {
     }
 
     private static func discoverSafariProfiles() -> [BrowserProfile] {
+        // First check if Safari is even running, otherwise UI scripting will fail
         let script = """
-        tell application "System Events"
-            tell process "Safari"
-                try
-                    set fileMenu to menu 1 of menu bar item "File" of menu bar 1
-                    return name of menu items of fileMenu
-                on error
-                    return {}
-                end try
+        if application "Safari" is running then
+            tell application "System Events"
+                tell process "Safari"
+                    try
+                        set fileMenu to menu 1 of menu bar item "File" of menu bar 1
+                        return name of menu items of fileMenu
+                    on error
+                        return {}
+                    end try
+                end tell
             end tell
-        end tell
+        else
+            return {}
+        end if
         """
         
         let task = Process()
@@ -120,19 +125,21 @@ class AppDiscovery {
             let data = pipe.fileHandleForReading.readDataToEndOfFile()
             if let output = String(data: data, encoding: .utf8) {
                 var profiles: [BrowserProfile] = []
-                // The output is "item1, item2, item3"
+                // AppleScript returns a comma-separated list
                 let items = output.components(separatedBy: ", ")
                 for item in items {
                     let name = item.trimmingCharacters(in: .whitespacesAndNewlines)
                     
-                    // Filter for "New [Profile] Window"
+                    // Safari profiles are always "New [ProfileName] Window"
                     if name.hasPrefix("New ") && name.hasSuffix(" Window") {
                         let profileName = name.replacingOccurrences(of: "New ", with: "")
                                               .replacingOccurrences(of: " Window", with: "")
                         
-                        // Ignore standard non-profile items
-                        let standardNames = ["Private", "Tab", "Window", "Window to Group", "Private Window", ""]
-                        if standardNames.contains(profileName) { continue }
+                        // Exclusion list for standard Safari menu items
+                        let standardItems = ["Private", "Tab", "Window", "Empty Tab Group", "Tab Group with This Tab"]
+                        if standardItems.contains(profileName) || profileName.isEmpty {
+                            continue
+                        }
                         
                         profiles.append(BrowserProfile(id: profileName, name: profileName))
                     }
