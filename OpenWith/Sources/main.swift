@@ -1,5 +1,6 @@
 import Cocoa
 import SwiftUI
+import ServiceManagement
 
 class AppDelegate: NSObject, NSApplicationDelegate, ObservableObject {
     var statusItem: NSStatusItem?
@@ -11,6 +12,7 @@ class AppDelegate: NSObject, NSApplicationDelegate, ObservableObject {
     
     @Published var hiddenBundleIds: Set<String> = []
     @Published var hiddenProfileIds: Set<String> = []
+    @Published var isLaunchAtLoginEnabled: Bool = false
     
     private var isRefreshingCache = false
 
@@ -18,6 +20,7 @@ class AppDelegate: NSObject, NSApplicationDelegate, ObservableObject {
         loadHiddenItems()
         checkPermissions()
         refreshBrowserCache()
+        checkLaunchAtLoginStatus()
         
         // Setup Menu Bar Item
         statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
@@ -46,6 +49,28 @@ class AppDelegate: NSObject, NSApplicationDelegate, ObservableObject {
     func applicationDidBecomeActive(_ notification: Notification) {
         checkPermissions()
         refreshBrowserCache()
+        checkLaunchAtLoginStatus()
+    }
+
+    func checkLaunchAtLoginStatus() {
+        if #available(macOS 13.0, *) {
+            isLaunchAtLoginEnabled = SMAppService.mainApp.status == .enabled
+        }
+    }
+
+    func toggleLaunchAtLogin() {
+        if #available(macOS 13.0, *) {
+            do {
+                if SMAppService.mainApp.status == .enabled {
+                    try SMAppService.mainApp.unregister()
+                } else {
+                    try SMAppService.mainApp.register()
+                }
+                checkLaunchAtLoginStatus()
+            } catch {
+                print("Failed to toggle launch at login: \(error)")
+            }
+        }
     }
 
     func refreshBrowserCache() {

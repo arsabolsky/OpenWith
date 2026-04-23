@@ -37,6 +37,25 @@ struct SettingsView: View {
             }
             .padding()
 
+            GroupBox(label: Text("General").font(.headline)) {
+                HStack {
+                    Text("Launch at Login")
+                    Spacer()
+                    Toggle("", isOn: Binding(
+                        get: { appDelegate.isLaunchAtLoginEnabled },
+                        set: { _ in appDelegate.toggleLaunchAtLogin() }
+                    ))
+                    .toggleStyle(.switch)
+                    .labelsHidden()
+                    .disabled({
+                        if #available(macOS 13.0, *) { return false }
+                        return true
+                    }())
+                }
+                .padding(8)
+            }
+            .padding(.horizontal)
+
             GroupBox(label: Text("Browsers & Profiles").font(.headline)) {
                 VStack(spacing: 0) {
                     List {

@@ -37,6 +37,13 @@ struct SetupView: View {
                         LSSetDefaultHandlerForURLScheme("https" as CFString, bundleId)
                     }
                 )
+                
+                SetupStep(
+                    title: "Launch at Login",
+                    description: "Automatically start OpenWith when you sign in.",
+                    isCompleted: appDelegate.isLaunchAtLoginEnabled,
+                    action: { appDelegate.toggleLaunchAtLogin() }
+                )
             }
             .padding()
             .background(Color(NSColor.windowBackgroundColor).opacity(0.5))
