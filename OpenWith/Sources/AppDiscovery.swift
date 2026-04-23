@@ -265,7 +265,11 @@ class AppDiscovery {
                                     displayName = fullName
                                 }
                                 
-                                if displayName == "Tab" || displayName == "Window" || displayName == "Private Window" || displayName == "Empty Tab Group" {
+                                // Filter out standard Safari items that aren't user profiles
+                                let lowerName = displayName.lowercased()
+                                if lowerName == "tab" || lowerName == "window" || lowerName == "private" || 
+                                   lowerName == "private window" || lowerName == "empty tab group" ||
+                                   lowerName == "new window" || lowerName == "new private window" {
                                     continue
                                 }
                                 
@@ -273,15 +277,33 @@ class AppDiscovery {
                             }
                         }
                         
-                        if !discoveredProfiles.isEmpty {
-                            saveSafariProfilesToCache(discoveredProfiles)
-                        }
+                        // Always update cache if Safari is running and we successfully scanned
+                        saveSafariProfilesToCache(discoveredProfiles)
                     }
                 }
             }
         }
         
-        return discoveredProfiles.isEmpty ? loadSafariProfilesFromCache() : discoveredProfiles
+        // If Safari is running, trust discoveredProfiles (even if empty)
+        // Only fallback to cache if Safari is not running or error occurred
+        if discoveredProfiles.isEmpty {
+            let scriptCheck = """
+            tell application "System Events" to exists process "Safari"
+            """
+            var isRunning = false
+            if let script = NSAppleScript(source: scriptCheck) {
+                isRunning = script.executeAndReturnError(nil).booleanValue
+            }
+            
+            if !isRunning {
+                let cached = loadSafariProfilesFromCache()
+                if !cached.isEmpty {
+                    return cached
+                }
+            }
+        }
+        
+        return discoveredProfiles
     }
 
     private static func saveSafariProfilesToCache(_ profiles: [BrowserProfile]) {
