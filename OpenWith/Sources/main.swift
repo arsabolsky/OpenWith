@@ -192,7 +192,7 @@ class AppDelegate: NSObject, NSApplicationDelegate, ObservableObject {
         
         if let profile = profile {
             // For Chromium-based browsers, we use /usr/bin/open -na to ensure the profile flag is respected
-            let isChromium = ["com.google.Chrome", "com.google.Chrome.canary", "org.chromium.Chromium", "com.microsoft.edgemac", "com.brave.Browser", "company.thebrowser.Browser", "com.vivaldi.Vivaldi"].contains(app.bundleIdentifier)
+            let isChromium = ["com.google.Chrome", "com.google.Chrome.canary", "org.chromium.Chromium", "com.microsoft.edgemac", "com.brave.Browser", "company.thebrowser.Browser", "com.vivaldi.Vivaldi", "net.imput.helium"].contains(app.bundleIdentifier)
             
             if isChromium {
                 let process = Process()
