@@ -90,53 +90,48 @@ class AppDiscovery {
     }
     
     private static func discoverFirefoxProfiles(at url: URL) -> [BrowserProfile] {
-        let fileManager = FileManager.default
-        var discoveredProfiles: [String: String] = [:] // Path -> Name
-        
-        // 1. Try profiles.ini first (Official Source)
         let iniUrl = url.appendingPathComponent("profiles.ini")
-        if let content = try? String(contentsOf: iniUrl, encoding: .utf8) {
-            let sections = content.components(separatedBy: "[Profile")
-            for section in sections {
-                let lines = section.components(separatedBy: .newlines)
-                var name: String?
-                var path: String?
-                for line in lines {
-                    if line.starts(with: "Name=") {
-                        name = line.replacingOccurrences(of: "Name=", with: "")
-                    } else if line.starts(with: "Path=") {
-                        path = line.replacingOccurrences(of: "Path=", with: "")
-                    }
-                }
-                if let n = name, let p = path {
-                    discoveredProfiles[p] = n
+        guard let content = try? String(contentsOf: iniUrl, encoding: .utf8) else { return [] }
+        
+        var profiles: [BrowserProfile] = []
+        let sections = parseIni(content)
+        
+        for (sectionName, keys) in sections {
+            if sectionName.lowercased().starts(with: "profile") {
+                if let name = keys["Name"] {
+                    // For Firefox, the id used for launching with -P is the profile name itself
+                    profiles.append(BrowserProfile(id: name, name: name))
                 }
             }
         }
         
-        // 2. Scan Profiles folder for dangling/unlisted profiles
-        let profilesDir = url.appendingPathComponent("Profiles")
-        if let contents = try? fileManager.contentsOfDirectory(at: profilesDir, includingPropertiesForKeys: nil) {
-            for itemUrl in contents {
-                let folderName = itemUrl.lastPathComponent
-                let relativePath = "Profiles/\(folderName)"
-                
-                // If not in INI, try to extract a name from the folder name
-                // Format: [random].[name] -> e.g. eRt2OTh8.Profile 1
-                if discoveredProfiles[relativePath] == nil {
-                    let parts = folderName.components(separatedBy: ".")
-                    if parts.count > 1 {
-                        let extractedName = parts.suffix(from: 1).joined(separator: ".")
-                        discoveredProfiles[relativePath] = extractedName
-                    } else {
-                        discoveredProfiles[relativePath] = folderName
-                    }
-                }
-            }
-        }
-        
-        return discoveredProfiles.map { BrowserProfile(id: $1, name: $1) }.sorted { $0.name < $1.name }
+        return profiles.sorted { $0.name < $1.name }
     }
+    
+    private static func parseIni(_ content: String) -> [String: [String: String]] {
+        var sections: [String: [String: String]] = [:]
+        var currentSection: String?
+        
+        let lines = content.components(separatedBy: .newlines)
+        for line in lines {
+            let trimmed = line.trimmingCharacters(in: .whitespaces)
+            if trimmed.isEmpty || trimmed.starts(with: ";") || trimmed.starts(with: "#") {
+                continue
+            }
+            
+            if trimmed.starts(with: "[") && trimmed.hasSuffix("]") {
+                let sectionName = String(trimmed.dropFirst().dropLast())
+                currentSection = sectionName
+                sections[sectionName] = [:]
+            } else if let current = currentSection, let eqIndex = trimmed.firstIndex(of: "=") {
+                let key = String(trimmed[..<eqIndex]).trimmingCharacters(in: .whitespaces)
+                let value = String(trimmed[trimmed.index(after: eqIndex)...]).trimmingCharacters(in: .whitespaces)
+                sections[current]?[key] = value
+            }
+        }
+        return sections
+    }
+}
     
     private static func parseChromiumProfiles(at url: URL) -> [BrowserProfile] {
         guard let data = try? Data(contentsOf: url),
