@@ -167,7 +167,7 @@ class AppDelegate: NSObject, NSApplicationDelegate, ObservableObject {
         let binaryPath = path.appendingPathComponent("Contents/MacOS/firefox").path
         let task = Process()
         task.launchPath = binaryPath
-        task.arguments = ["-P", profile.id, "-new-tab", url.absoluteString]
+        task.arguments = ["--profile", profile.id, "--new-tab", url.absoluteString]
         
         do {
             try task.run()

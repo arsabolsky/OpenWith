@@ -147,40 +147,39 @@ class AppDiscovery {
     }
     
     private static func discoverFirefoxProfiles(at url: URL) -> [BrowserProfile] {
-        var discoveredProfiles: [BrowserProfile] = []
+        var discoveredProfiles: [String: String] = [:] // Path -> Name
         
-        // 1. Detect Modern Firefox (Profile Groups)
+        // 1. Try modern Profile Groups (SQLite)
         let profileGroupsDir = url.appendingPathComponent("Profile Groups")
         if let contents = try? FileManager.default.contentsOfDirectory(at: profileGroupsDir, includingPropertiesForKeys: nil) {
             for fileUrl in contents where fileUrl.pathExtension == "sqlite" {
-                if let sqliteProfiles = parseFirefoxSqlite(at: fileUrl), !sqliteProfiles.isEmpty {
-                    // If we found modern profiles, we prefer these
-                    discoveredProfiles.append(contentsOf: sqliteProfiles)
-                }
-            }
-        }
-        
-        // 2. If no modern profiles found, fallback to Traditional Firefox (profiles.ini)
-        if discoveredProfiles.isEmpty {
-            let iniUrl = url.appendingPathComponent("profiles.ini")
-            if let content = try? String(contentsOf: iniUrl, encoding: .utf8) {
-                let sections = parseIni(content)
-                for (sectionName, keys) in sections {
-                    if sectionName.lowercased().starts(with: "profile"), let name = keys["Name"] {
-                        discoveredProfiles.append(BrowserProfile(id: name, name: name))
+                if let sqliteProfiles = parseFirefoxSqlite(at: fileUrl, firefoxDir: url), !sqliteProfiles.isEmpty {
+                    for p in sqliteProfiles {
+                        discoveredProfiles[p.id] = p.name
                     }
                 }
             }
         }
         
-        return discoveredProfiles.sorted { $0.name < $1.name }
+        // 2. Fallback/Merge with profiles.ini
+        if discoveredProfiles.isEmpty {
+            let iniUrl = url.appendingPathComponent("profiles.ini")
+            if let content = try? String(contentsOf: iniUrl, encoding: .utf8) {
+                let sections = parseIni(content)
+                for (sectionName, keys) in sections {
+                    if sectionName.lowercased().starts(with: "profile"), let name = keys["Name"], let path = keys["Path"] {
+                        let isRelative = keys["IsRelative"] == "1"
+                        let fullPath = isRelative ? url.appendingPathComponent(path).path : path
+                        discoveredProfiles[fullPath] = name
+                    }
+                }
+            }
+        }
+        
+        return discoveredProfiles.map { BrowserProfile(id: $0.key, name: $0.value) }.sorted { $0.name < $1.name }
     }
     
-    private static func parseFirefoxSqlite(at url: URL) -> [BrowserProfile]? {
-        // Since we can't easily link SQLite in a simple SPM script without dependencies,
-        // we will use a shell command to dump the table if possible, or skip for now.
-        // Actually, we can use process execution to run sqlite3 which is built into macOS.
-        
+    private static func parseFirefoxSqlite(at url: URL, firefoxDir: URL) -> [BrowserProfile]? {
         let task = Process()
         task.launchPath = "/usr/bin/sqlite3"
         task.arguments = [url.path, "SELECT path, name FROM Profiles;"]
@@ -197,9 +196,10 @@ class AppDiscovery {
                 for line in lines where !line.isEmpty {
                     let parts = line.components(separatedBy: "|")
                     if parts.count >= 2 {
-                        // For Firefox, the name is what matters for the -P flag
+                        let relativePath = parts[0]
                         let name = parts[1]
-                        profiles.append(BrowserProfile(id: name, name: name))
+                        let fullPath = firefoxDir.appendingPathComponent(relativePath).path
+                        profiles.append(BrowserProfile(id: fullPath, name: name))
                     }
                 }
                 return profiles
