@@ -210,7 +210,6 @@ class AppDelegate: NSObject, NSApplicationDelegate, ObservableObject {
 
         let scriptSource = """
         set theURL to "\(url.absoluteString)"
-        set the clipboard to theURL
         
         tell application "Safari" to activate
         delay 0.3
@@ -219,7 +218,7 @@ class AppDelegate: NSObject, NSApplicationDelegate, ObservableObject {
             tell process "Safari"
                 set frontmost to true
                 try
-                    -- Phase 1: Create/Focus the profile window
+                    -- Phase 1: Create the profile window
                     try
                         tell menu bar item "File" of menu bar 1
                             tell menu 1
@@ -235,19 +234,21 @@ class AppDelegate: NSObject, NSApplicationDelegate, ObservableObject {
                             end tell
                         end tell
                     end try
-                    
-                    delay 0.5
-                    
-                    -- Phase 2: Paste the URL (Much safer and faster than typing)
-                    keystroke "l" using {command down} -- Focus Address Bar
-                    delay 0.2
-                    keystroke "v" using {command down} -- Paste
-                    delay 0.1
-                    keystroke return
                 on error errMsg
-                    log "Error launching Safari profile: " & errMsg
+                    log "Error clicking Safari menu: " & errMsg
                 end try
             end tell
+        end tell
+        
+        delay 0.6 -- Wait for the new window to be registered as a document
+        
+        tell application "Safari"
+            try
+                set URL of document 1 to theURL
+            on error errMsg
+                log "Error setting URL: " & errMsg
+                open location theURL -- Final fallback
+            end try
         end tell
         """
         
