@@ -47,12 +47,24 @@ class AppDiscovery {
     }
     
     private static func discoverSafariProfiles() -> [BrowserProfile] {
+        // Check if Safari is running. If not, we can't use UI Scripting.
+        let runningSafari = NSWorkspace.shared.runningApplications.first(where: { $0.bundleIdentifier == "com.apple.Safari" })
+        
+        if runningSafari == nil {
+            // Safari isn't running, return an empty list or just "Personal"
+            return [BrowserProfile(id: "Personal", name: "Personal")]
+        }
+
         let script = """
         tell application "System Events"
             tell process "Safari"
                 try
-                    set fileMenu to menu 1 of menu bar item "File" of menu bar 1
-                    return name of menu items of fileMenu
+                    -- Ensure we have the File menu
+                    if exists (menu bar item "File" of menu bar 1) then
+                        return name of menu items of menu 1 of menu bar item "File" of menu bar 1
+                    else
+                        return {}
+                    end try
                 on error
                     return {}
                 end try
@@ -85,13 +97,19 @@ class AppDiscovery {
                         profiles.append(BrowserProfile(id: profileName, name: profileName))
                     }
                 }
+                
+                // Always include Personal if not found
+                if !profiles.contains(where: { $0.name == "Personal" }) {
+                    profiles.insert(BrowserProfile(id: "Personal", name: "Personal"), at: 0)
+                }
+                
                 return profiles
             }
         } catch {
             print("Error discovering Safari profiles: \(error)")
         }
         
-        return []
+        return [BrowserProfile(id: "Personal", name: "Personal")]
     }
 
     private static func isChromiumBased(bundleId: String) -> Bool {
