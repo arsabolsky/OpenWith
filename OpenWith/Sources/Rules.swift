@@ -12,6 +12,7 @@ struct Rule: Identifiable, Codable {
     var type: RuleType
     var pattern: String
     var targetAppBundleId: String
+    var targetProfileId: String? // Optional profile ID
 }
 
 class RulesEngine {

@@ -90,8 +90,14 @@ class AppDelegate: NSObject, NSApplicationDelegate, ObservableObject {
         if let matchedRule = RulesEngine.match(url: url, rules: rules),
            let appUrl = NSWorkspace.shared.urlForApplication(withBundleIdentifier: matchedRule.targetAppBundleId) {
             print("Auto-routing to \(matchedRule.targetAppBundleId) due to rule: \(matchedRule.name)")
+            
             let appInfo = ApplicationInfo(name: matchedRule.name, bundleIdentifier: matchedRule.targetAppBundleId, path: appUrl, icon: nil)
-            self.open(url: url, in: appInfo)
+            var profile: BrowserProfile? = nil
+            if let profileId = matchedRule.targetProfileId {
+                profile = BrowserProfile(id: profileId, name: "")
+            }
+            
+            self.open(url: url, in: appInfo, profile: profile)
             return
         }
         
@@ -103,8 +109,8 @@ class AppDelegate: NSObject, NSApplicationDelegate, ObservableObject {
     func showAppPicker(for url: URL) {
         let browsers = AppDiscovery.getInstalledBrowsers()
         
-        let contentView = PickerView(url: url, apps: browsers) { selectedApp in
-            self.open(url: url, in: selectedApp)
+        let contentView = PickerView(url: url, apps: browsers) { selectedApp, profile in
+            self.open(url: url, in: selectedApp, profile: profile)
             self.closePicker()
         }
         
@@ -133,8 +139,11 @@ class AppDelegate: NSObject, NSApplicationDelegate, ObservableObject {
         NSApp.activate(ignoringOtherApps: true)
     }
     
-    func open(url: URL, in app: ApplicationInfo) {
+    func open(url: URL, in app: ApplicationInfo, profile: BrowserProfile? = nil) {
         let configuration = NSWorkspace.OpenConfiguration()
+        if let profile = profile {
+            configuration.arguments = ["--profile-directory=\(profile.id)"]
+        }
         NSWorkspace.shared.open([url], withApplicationAt: app.path, configuration: configuration) { _, error in
             if let error = error {
                 print("Error opening URL: \(error.localizedDescription)")
