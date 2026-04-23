@@ -138,11 +138,15 @@ class AppDelegate: NSObject, NSApplicationDelegate, ObservableObject {
         pickerWindow?.makeKeyAndOrderFront(nil)
         NSApp.activate(ignoringOtherApps: true)
     }
-    
     func open(url: URL, in app: ApplicationInfo, profile: BrowserProfile? = nil) {
         let configuration = NSWorkspace.OpenConfiguration()
         if let profile = profile {
-            configuration.arguments = ["--profile-directory=\(profile.id)"]
+            if app.bundleIdentifier == "org.mozilla.firefox" {
+                configuration.arguments = ["-P", profile.id]
+            } else {
+                // Chromium browsers use --profile-directory
+                configuration.arguments = ["--profile-directory=\(profile.id)"]
+            }
         }
         NSWorkspace.shared.open([url], withApplicationAt: app.path, configuration: configuration) { _, error in
             if let error = error {
@@ -150,6 +154,7 @@ class AppDelegate: NSObject, NSApplicationDelegate, ObservableObject {
             }
         }
     }
+
     
     func closePicker() {
         pickerWindow?.orderOut(nil)
