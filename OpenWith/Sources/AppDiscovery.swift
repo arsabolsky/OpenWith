@@ -198,18 +198,32 @@ class AppDiscovery {
                     set foundNames to {}
                     try
                         tell menu 1 of menu bar item "File" of menu bar 1
+                            -- 1. Check direct items like "New [Name] Window"
                             set allItems to name of every menu item
                             repeat with itemName in allItems
-                                if itemName starts with "New " and itemName ends with " Window" then
-                                    copy itemName to end of foundNames
+                                if itemName is not missing value then
+                                    if (itemName starts with "New ") and (itemName ends with " Window") then
+                                        copy itemName to end of foundNames
+                                    end if
                                 end if
                             end repeat
                             
+                            -- 2. Check "New Window" submenu
                             try
                                 set subItems to name of menu items of menu 1 of menu item "New Window"
                                 repeat with subName in subItems
                                     if subName is not missing value and subName is not "" then
                                         copy subName to end of foundNames
+                                    end if
+                                end repeat
+                            end try
+
+                            -- 3. Check for dedicated "Profiles" submenu
+                            try
+                                set profItems to name of menu items of menu 1 of menu item "Profiles"
+                                repeat with profName in profItems
+                                    if profName is not missing value and profName is not "" then
+                                        copy profName to end of foundNames
                                     end if
                                 end repeat
                             end try

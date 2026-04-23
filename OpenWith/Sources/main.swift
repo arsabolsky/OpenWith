@@ -308,12 +308,22 @@ class AppDelegate: NSObject, NSApplicationDelegate, ObservableObject {
                     try
                         tell menu bar item "File" of menu bar 1
                             tell menu 1
-                                tell menu item "New Window"
-                                    click menu item "\(rawProfileId)" of menu 1
-                                end tell
+                                try
+                                    -- Path 1: File > New Window > [Profile]
+                                    click menu item "\(rawProfileId)" of menu 1 of menu item "New Window"
+                                on error
+                                    try
+                                        -- Path 2: File > Profiles > [Profile]
+                                        click menu item "\(rawProfileId)" of menu 1 of menu item "Profiles"
+                                    on error
+                                        -- Path 3: File > [Profile] (Direct)
+                                        click menu item "\(rawProfileId)"
+                                    end try
+                                end try
                             end tell
                         end tell
                     on error
+                        -- Path 4: Absolute Fallback (Direct in File if menu structure is odd)
                         tell menu bar item "File" of menu bar 1
                             tell menu 1
                                 click menu item "\(rawProfileId)"
