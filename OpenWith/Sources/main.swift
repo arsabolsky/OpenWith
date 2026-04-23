@@ -145,7 +145,7 @@ class AppDelegate: NSObject, NSApplicationDelegate, ObservableObject {
             let view = SettingsView(appDelegate: self)
             
             settingsWindow = NSWindow(
-                contentRect: NSRect(x: 0, y: 0, width: 500, height: 500),
+                contentRect: NSRect(x: 0, y: 0, width: 500, height: 700),
                 styleMask: [.titled, .closable, .miniaturizable, .resizable],
                 backing: .buffered,
                 defer: false
