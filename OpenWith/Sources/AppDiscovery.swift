@@ -102,30 +102,79 @@ class AppDiscovery {
     private static func discoverFirefoxProfiles() -> [BrowserProfile] {
         let fileManager = FileManager.default
         let supportDir = fileManager.urls(for: .applicationSupportDirectory, in: .userDomainMask).first!
-        let profilesIniUrl = supportDir.appendingPathComponent("Firefox/profiles.ini")
-        
-        guard let content = try? String(contentsOf: profilesIniUrl, encoding: .utf8) else {
-            return []
-        }
+        let firefoxDir = supportDir.appendingPathComponent("Firefox")
+        let profileGroupsDir = firefoxDir.appendingPathComponent("Profile Groups")
         
         var profiles: [BrowserProfile] = []
-        let lines = content.components(separatedBy: .newlines)
-        var currentName: String?
+        var seenPaths = Set<String>()
         
-        for line in lines {
-            let trimmed = line.trimmingCharacters(in: .whitespacesAndNewlines)
-            if trimmed.hasPrefix("[Profile") {
-                if let name = currentName {
-                    profiles.append(BrowserProfile(id: name, name: name))
+        // Strategy 1: SQLite discovery (Newer Firefox / OpenIn style)
+        if let groupFiles = try? fileManager.contentsOfDirectory(at: profileGroupsDir, includingPropertiesForKeys: nil) {
+            for file in groupFiles where file.pathExtension == "sqlite" {
+                let process = Process()
+                process.executableURL = URL(fileURLWithPath: "/usr/bin/sqlite3")
+                process.arguments = [file.path, "select path, name from Profiles;"]
+                
+                let outputPipe = Pipe()
+                process.standardOutput = outputPipe
+                
+                try? process.run()
+                process.waitUntilExit()
+                
+                let data = outputPipe.fileHandleForReading.readDataToEndOfFile()
+                if let output = String(data: data, encoding: .utf8) {
+                    let lines = output.components(separatedBy: .newlines)
+                    for line in lines where !line.isEmpty {
+                        let parts = line.components(separatedBy: "|")
+                        if parts.count >= 2 {
+                            let relPath = parts[0]
+                            let name = parts[1]
+                            let fullPath = firefoxDir.appendingPathComponent(relPath).path
+                            
+                            if !seenPaths.contains(fullPath) {
+                                profiles.append(BrowserProfile(id: fullPath, name: name))
+                                seenPaths.insert(fullPath)
+                            }
+                        }
+                    }
                 }
-                currentName = nil
-            } else if trimmed.hasPrefix("Name=") {
-                currentName = String(trimmed.dropFirst(5))
             }
         }
         
-        if let name = currentName {
-            profiles.append(BrowserProfile(id: name, name: name))
+        // Strategy 2: profiles.ini discovery (Legacy / Fallback)
+        if profiles.isEmpty {
+            let profilesIniUrl = firefoxDir.appendingPathComponent("profiles.ini")
+            if let content = try? String(contentsOf: profilesIniUrl, encoding: .utf8) {
+                let lines = content.components(separatedBy: .newlines)
+                var currentName: String?
+                var currentPath: String?
+                
+                for line in lines {
+                    let trimmed = line.trimmingCharacters(in: .whitespacesAndNewlines)
+                    if trimmed.hasPrefix("[Profile") {
+                        if let name = currentName, let path = currentPath {
+                            let fullPath = path.hasPrefix("/") ? path : firefoxDir.appendingPathComponent(path).path
+                            if !seenPaths.contains(fullPath) {
+                                profiles.append(BrowserProfile(id: fullPath, name: name))
+                                seenPaths.insert(fullPath)
+                            }
+                        }
+                        currentName = nil
+                        currentPath = nil
+                    } else if trimmed.hasPrefix("Name=") {
+                        currentName = String(trimmed.dropFirst(5))
+                    } else if trimmed.hasPrefix("Path=") {
+                        currentPath = String(trimmed.dropFirst(5))
+                    }
+                }
+                
+                if let name = currentName, let path = currentPath {
+                    let fullPath = path.hasPrefix("/") ? path : firefoxDir.appendingPathComponent(path).path
+                    if !seenPaths.contains(fullPath) {
+                        profiles.append(BrowserProfile(id: fullPath, name: name))
+                    }
+                }
+            }
         }
         
         return profiles.sorted { $0.name < $1.name }

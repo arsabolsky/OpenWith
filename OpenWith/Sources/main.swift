@@ -204,7 +204,7 @@ class AppDelegate: NSObject, NSApplicationDelegate, ObservableObject {
                 if isChromium {
                     arguments.append(contentsOf: ["--args", "--profile-directory=\(profile.id)"])
                 } else if isFirefox {
-                    arguments.append(contentsOf: ["--args", "-P", profile.id])
+                    arguments.append(contentsOf: ["--args", "--new-instance", "--profile", profile.id])
                 }
                 arguments.append(url.absoluteString)
                 
