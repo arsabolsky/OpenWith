@@ -5,9 +5,12 @@ class AppDelegate: NSObject, NSApplicationDelegate, ObservableObject {
     var statusItem: NSStatusItem?
     var pickerWindow: NSWindow?
     @Published var rules: [Rule] = []
+    @Published var isAccessibilityTrusted: Bool = false
+    @Published var isAutomationAllowed: Bool = false
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         loadRules()
+        checkPermissions()
         
         // Setup Menu Bar Item
         statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
@@ -24,6 +27,10 @@ class AppDelegate: NSObject, NSApplicationDelegate, ObservableObject {
             forEventClass: AEEventClass(kInternetEventClass),
             andEventID: AEEventID(kAEGetURL)
         )
+    }
+
+    func applicationDidBecomeActive(_ notification: Notification) {
+        checkPermissions()
     }
 
     func loadRules() {
@@ -44,6 +51,33 @@ class AppDelegate: NSObject, NSApplicationDelegate, ObservableObject {
         }
     }
 
+    func checkPermissions() {
+        isAccessibilityTrusted = AXIsProcessTrusted()
+        
+        // Check Automation (Apple Events) for Safari
+        if #available(macOS 10.14, *) {
+            let safariTarget = NSAppleEventDescriptor(bundleIdentifier: "com.apple.Safari")
+            let status = AEDeterminePermissionToAutomateTarget(safariTarget.aeDescriptor, typeWildCard, typeWildCard, true)
+            isAutomationAllowed = (status == noErr)
+        } else {
+            isAutomationAllowed = true
+        }
+    }
+
+    func requestPermissions() {
+        let options = [kAXTrustedCheckOptionPrompt.takeRetainedValue() as String: true]
+        AXIsProcessTrustedWithOptions(options as CFDictionary)
+        
+        // Triggering an AppleScript usually prompts for Automation if not determined
+        let script = NSAppleScript(source: "tell application \"Safari\" to get name")
+        script?.executeAndReturnError(nil)
+        
+        // Polling for status change might be overkill, let's just check again after a short delay
+        DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) {
+            self.checkPermissions()
+        }
+    }
+
     func setupMenu() {
         let menu = NSMenu()
         menu.addItem(NSMenuItem(title: "Settings...", action: #selector(openSettings), keyEquivalent: ","))
@@ -56,7 +90,7 @@ class AppDelegate: NSObject, NSApplicationDelegate, ObservableObject {
 
     @objc func openSettings() {
         if settingsWindow == nil {
-            let view = SettingsView(rules: Binding(
+            let view = SettingsView(appDelegate: self, rules: Binding(
                 get: { self.rules },
                 set: { self.rules = $0 }
             ), onSave: {
@@ -157,6 +191,12 @@ class AppDelegate: NSObject, NSApplicationDelegate, ObservableObject {
     }
 
     func launchSafari(url: URL, profile: BrowserProfile) {
+        if !AXIsProcessTrusted() {
+            print("Accessibility permissions missing for Safari UI scripting")
+            requestPermissions()
+            return
+        }
+
         let scriptSource = """
         tell application "Safari"
             activate

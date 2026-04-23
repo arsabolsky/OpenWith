@@ -1,6 +1,7 @@
 import SwiftUI
 
 struct SettingsView: View {
+    @ObservedObject var appDelegate: AppDelegate
     @Binding var rules: [Rule]
     var onSave: () -> Void
     
@@ -12,6 +13,38 @@ struct SettingsView: View {
 
     var body: some View {
         VStack {
+            GroupBox(label: Text("Permissions").font(.headline)) {
+                VStack(spacing: 8) {
+                    HStack {
+                        Image(systemName: appDelegate.isAccessibilityTrusted ? "checkmark.circle.fill" : "exclamationmark.circle.fill")
+                            .foregroundColor(appDelegate.isAccessibilityTrusted ? .green : .red)
+                        Text("Accessibility: \(appDelegate.isAccessibilityTrusted ? "Trusted" : "Not Trusted")")
+                        Spacer()
+                    }
+                    
+                    HStack {
+                        Image(systemName: appDelegate.isAutomationAllowed ? "checkmark.circle.fill" : "exclamationmark.circle.fill")
+                            .foregroundColor(appDelegate.isAutomationAllowed ? .green : .red)
+                        Text("Safari Automation: \(appDelegate.isAutomationAllowed ? "Allowed" : "Not Allowed")")
+                        Spacer()
+                    }
+
+                    if !appDelegate.isAccessibilityTrusted || !appDelegate.isAutomationAllowed {
+                        Button("Request Missing Access") {
+                            appDelegate.requestPermissions()
+                        }
+                        .padding(.top, 4)
+                    } else {
+                        Button("Re-check Status") {
+                            appDelegate.checkPermissions()
+                        }
+                        .padding(.top, 4)
+                    }
+                }
+                .padding(8)
+            }
+            .padding()
+
             List {
                 ForEach(rules) { rule in
                     HStack {
