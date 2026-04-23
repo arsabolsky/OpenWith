@@ -6,7 +6,7 @@ struct BrowserProfile: Identifiable, Codable, Hashable {
 }
 
 struct ApplicationInfo: Identifiable, Hashable {
-    let id = UUID()
+    var id: String { bundleIdentifier }
     let name: String
     let bundleIdentifier: String
     let path: URL
@@ -191,44 +191,49 @@ class AppDiscovery {
 
     private static func discoverSafariProfiles() -> [BrowserProfile] {
         let bundleId = "com.apple.Safari"
+        print("Safari: Starting discovery...")
         let scriptSource = """
         tell application "System Events"
             if exists process "Safari" then
                 tell process "Safari"
-                    set foundNames to {}
-                    set fileMenu to menu 1 of menu bar item "File" of menu bar 1
-                    
-                    -- 1. Scan direct items for "New ... Window"
+                    set allNames to {}
                     try
-                        set directItems to name of every menu item of fileMenu
-                        repeat with itemName in directItems
-                            if itemName is not missing value and itemName starts with "New " and itemName ends with " Window" then
-                                copy itemName to end of foundNames
-                            end if
-                        end repeat
-                    end try
-                    
-                    -- 2. Scan "New Window" submenu if it exists
-                    try
-                        set subItems to name of menu items of menu 1 of menu item "New Window" of fileMenu
-                        repeat with itemName in subItems
-                            if itemName is not missing value and itemName is not "" then
-                                copy itemName to end of foundNames
-                            end if
-                        end repeat
-                    end try
+                        set fileMenu to menu 1 of menu bar item "File" of menu bar 1
+                        
+                        -- 1. Scan direct items for "New ... Window"
+                        try
+                            set directItems to name of every menu item of fileMenu
+                            repeat with itemName in directItems
+                                if itemName is not missing value and itemName starts with "New " and itemName ends with " Window" then 
+                                    copy (itemName as string) to end of allNames
+                                end if
+                            end repeat
+                        end try
+                        
+                        -- 2. Scan "New Window" submenu if it exists
+                        try
+                            set subItems to name of menu items of menu 1 of menu item "New Window" of fileMenu
+                            repeat with itemName in subItems
+                                if itemName is not missing value and itemName is not "" then
+                                    copy (itemName as string) to end of allNames
+                                end if
+                            end repeat
+                        end try
 
-                    -- 3. Scan "Profiles" submenu if it exists
-                    try
-                        set profItems to name of menu items of menu 1 of menu item "Profiles" of fileMenu
-                        repeat with itemName in profItems
-                            if itemName is not missing value and itemName is not "" then
-                                copy itemName to end of foundNames
-                            end if
-                        end repeat
+                        -- 3. Scan "Profiles" submenu if it exists
+                        try
+                            set profItems to name of menu items of menu 1 of menu item "Profiles" of fileMenu
+                            repeat with itemName in profItems
+                                if itemName is not missing value and itemName is not "" then
+                                    copy (itemName as string) to end of allNames
+                                end if
+                            end repeat
+                        end try
+                        
+                        return allNames
+                    on error errMsg
+                        return {"_ERROR_:" & errMsg}
                     end try
-                    
-                    return foundNames
                 end tell
             else
                 return {"_SAFARI_NOT_RUNNING_"}
@@ -241,42 +246,38 @@ class AppDiscovery {
             var error: NSDictionary?
             let result = script.executeAndReturnError(&error)
             
-            if error == nil {
+            if let err = error {
+                print("Safari: AppleScript execution error: \(err)")
+            } else {
                 let count = result.numberOfItems
                 if count >= 1 {
-                    let firstItem = result.atIndex(1)?.stringValue
-                    if firstItem != "_SAFARI_NOT_RUNNING_" {
+                    let firstItem = result.atIndex(1)?.stringValue ?? ""
+                    if firstItem == "_SAFARI_NOT_RUNNING_" {
+                        print("Safari: Not running.")
+                    } else if firstItem.hasPrefix("_ERROR_") {
+                        print("Safari: UI Scripting error: \(firstItem)")
+                    } else {
                         var displayNamesSet = Set<String>()
                         for i in 1...count {
                             if let fullName = result.atIndex(i)?.stringValue, !fullName.isEmpty {
                                 var displayName = fullName
-                                
-                                // Clean up the display name
                                 if fullName.hasPrefix("New ") && fullName.hasSuffix(" Window") {
                                     displayName = String(fullName.dropFirst(4).dropLast(7))
                                 }
                                 
-                                let lowerName = displayName.lowercased()
-                                // Broaden blacklist to catch more standard items
-                                let blacklisted = ["tab", "window", "private", "private window", "empty tab group", "new window", "new private window", "manage profiles…", "profiles", "new empty tab group", "new tab", "new tab at end", "open file…", "open location…", "close window", "close all windows", "close tab", "close other tabs", "delete tab group", "save as…", "share…", "export as pdf…", "add to dock…", "import browsing data from file or folder…", "export browsing data to file…", "print…"]
+                                let trimmedName = displayName.trimmingCharacters(in: .whitespacesAndNewlines)
+                                if trimmedName.isEmpty { continue }
                                 
-                                if blacklisted.contains(lowerName) {
-                                    continue
-                                }
+                                let lowerName = trimmedName.lowercased()
+                                let blacklisted = ["tab", "window", "private", "private window", "empty tab group", "new window", "new private window", "manage profiles…", "profiles", "new empty tab group", "new tab", "new tab at end", "open file…", "open location…", "close window", "close all windows", "close tab", "close other tabs", "delete tab group", "save as…", "share…", "export as pdf…", "add to dock…", "import browsing data from file or folder…", "export browsing data to file…", "print…", "untitled", "missing value"]
                                 
-                                // Deduplicate by display name
+                                if blacklisted.contains(lowerName) { continue }
+                                
                                 if displayNamesSet.contains(lowerName) { continue }
                                 displayNamesSet.insert(lowerName)
                                 
-                                print("Safari: Accept Candidate: \(displayName) (ID: \(fullName))")
-                                discoveredProfiles.append(BrowserProfile(id: "\(bundleId):\(fullName)", name: displayName))
+                                discoveredProfiles.append(BrowserProfile(id: "\(bundleId):\(fullName)", name: trimmedName))
                             }
-                        }
-                        
-                        // Only update cache if we found actual profiles
-                        if !discoveredProfiles.isEmpty {
-                            print("Safari: Discovered \(discoveredProfiles.count) profiles: \(discoveredProfiles.map { $0.name })")
-                            saveSafariProfilesToCache(discoveredProfiles)
                         }
                     }
                 }
@@ -284,11 +285,13 @@ class AppDiscovery {
         }
         
         if !discoveredProfiles.isEmpty {
+            print("Safari: Discovered \(discoveredProfiles.count) profiles: \(discoveredProfiles.map { $0.name })")
             saveSafariProfilesToCache(discoveredProfiles)
+            fflush(stdout)
             return discoveredProfiles
         }
         
-        // No live profiles found. Check if Safari is running.
+        // Fallback check
         let scriptCheck = "tell application \"System Events\" to exists process \"Safari\""
         var isRunning = false
         if let script = NSAppleScript(source: scriptCheck) {
@@ -296,9 +299,14 @@ class AppDiscovery {
         }
         
         if !isRunning {
-            return loadSafariProfilesFromCache()
+            let cached = loadSafariProfilesFromCache()
+            print("Safari: Not running. Returning \(cached.count) cached profiles.")
+            fflush(stdout)
+            return cached
         }
         
+        print("Safari: Running but no profiles found.")
+        fflush(stdout)
         return []
     }
 

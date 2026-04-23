@@ -206,15 +206,7 @@ class AppDelegate: NSObject, NSApplicationDelegate, ObservableObject {
     }
     
     func showAppPicker(for url: URL) {
-        // Filter out hidden items
-        let visibleApps = cachedBrowsers.compactMap { app -> ApplicationInfo? in
-            if hiddenBundleIds.contains(app.bundleIdentifier) { return nil }
-            var filteredApp = app
-            filteredApp.profiles = app.profiles.filter { !hiddenProfileIds.contains($0.id) }
-            return filteredApp
-        }
-        
-        let contentView = PickerView(url: url, apps: visibleApps, onSelect: { selectedApp, profile in
+        let contentView = PickerView(appDelegate: self, url: url, onSelect: { selectedApp, profile in
             self.open(url: url, in: selectedApp, profile: profile)
             self.closePicker()
         }, onCancel: {

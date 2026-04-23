@@ -1,13 +1,32 @@
 import SwiftUI
 
 struct PickerView: View {
+    @ObservedObject var appDelegate: AppDelegate
     let url: URL
-    let apps: [ApplicationInfo]
     var onSelect: (ApplicationInfo, BrowserProfile?) -> Void
     var onCancel: () -> Void
     
     @State private var selectedIndex = 0
-    @State private var allOptions: [(app: ApplicationInfo, profile: BrowserProfile?)] = []
+    
+    var visibleApps: [ApplicationInfo] {
+        appDelegate.cachedBrowsers.compactMap { app -> ApplicationInfo? in
+            if appDelegate.hiddenBundleIds.contains(app.bundleIdentifier) { return nil }
+            var filteredApp = app
+            filteredApp.profiles = app.profiles.filter { !appDelegate.hiddenProfileIds.contains($0.id) }
+            return filteredApp
+        }
+    }
+    
+    var allOptions: [(app: ApplicationInfo, profile: BrowserProfile?)] {
+        var options: [(app: ApplicationInfo, profile: BrowserProfile?)] = []
+        for app in visibleApps {
+            options.append((app, nil))
+            for profile in app.profiles {
+                options.append((app, profile))
+            }
+        }
+        return options
+    }
     
     var body: some View {
         VStack(spacing: 0) {
@@ -15,6 +34,7 @@ struct PickerView: View {
             HStack {
                 Text("Open with...")
                     .font(.headline)
+                    .foregroundColor(.primary)
                 Spacer()
                 Button(action: onCancel) {
                     Image(systemName: "xmark.circle.fill")
@@ -27,8 +47,9 @@ struct PickerView: View {
             // List
             ScrollViewReader { proxy in
                 List {
-                    ForEach(0..<allOptions.count, id: \.self) { index in
-                        let option = allOptions[index]
+                    let options = allOptions
+                    ForEach(0..<options.count, id: \.self) { index in
+                        let option = options[index]
                         
                         HStack {
                             // Shortcut Number
@@ -47,10 +68,10 @@ struct PickerView: View {
                                     .resizable()
                                     .frame(width: 16, height: 16)
                                     .padding(.leading, 12)
-                                    .foregroundColor(selectedIndex == index ? .white : .primary)
+                                    .foregroundColor(selectedIndex == index ? .white : .primary.opacity(0.8))
                                 Text(profile.name)
                                     .font(.subheadline)
-                                    .foregroundColor(selectedIndex == index ? .white : .secondary)
+                                    .foregroundColor(selectedIndex == index ? .white : .primary.opacity(0.9))
                             } else {
                                 if let icon = option.app.icon {
                                     Image(nsImage: icon)
@@ -58,7 +79,7 @@ struct PickerView: View {
                                         .frame(width: 20, height: 20)
                                 }
                                 Text(option.app.name)
-                                    .font(.body)
+                                    .font(.body.bold())
                                     .foregroundColor(selectedIndex == index ? .white : .primary)
                             }
                             Spacer()
@@ -109,51 +130,84 @@ struct PickerView: View {
         }
         .frame(width: 300, height: 400)
         .background(VisualEffectView(material: .hudWindow, blendingMode: .behindWindow))
-        .onAppear {
-            setupOptions()
-            
-            // Add local event monitor for keyboard navigation
-            NSEvent.addLocalMonitorForEvents(matching: .keyDown) { event in
-                switch event.keyCode {
-                case 126: // Up
-                    if selectedIndex > 0 { selectedIndex -= 1 }
-                    return nil
-                case 125: // Down
-                    if selectedIndex < allOptions.count - 1 { selectedIndex += 1 }
-                    return nil
-                case 36: // Enter
-                    if selectedIndex < allOptions.count {
-                        let opt = allOptions[selectedIndex]
-                        onSelect(opt.app, opt.profile)
-                    }
-                    return nil
-                case 53: // Escape
-                    onCancel()
-                    return nil
-                default:
-                    if let chars = event.characters, let num = Int(chars), num >= 1 && num <= 9 {
-                        let idx = num - 1
-                        if idx >= 0 && idx < allOptions.count {
-                            let opt = allOptions[idx]
-                            onSelect(opt.app, opt.profile)
-                        }
-                        return nil
-                    }
+        .background(KeyEventsView(
+            onUp: {
+                if selectedIndex > 0 { selectedIndex -= 1 }
+            },
+            onDown: {
+                if selectedIndex < allOptions.count - 1 { selectedIndex += 1 }
+            },
+            onEnter: {
+                let options = allOptions
+                if selectedIndex < options.count {
+                    let opt = options[selectedIndex]
+                    onSelect(opt.app, opt.profile)
                 }
-                return event
+            },
+            onEscape: onCancel,
+            onNumber: { num in
+                let options = allOptions
+                let idx = num - 1
+                if idx >= 0 && idx < options.count {
+                    let opt = options[idx]
+                    onSelect(opt.app, opt.profile)
+                }
             }
-        }
+        ))
+    }
+}
+
+struct KeyEventsView: NSViewRepresentable {
+    let onUp: () -> Void
+    let onDown: () -> Void
+    let onEnter: () -> Void
+    let onEscape: () -> Void
+    let onNumber: (Int) -> Void
+    
+    func makeNSView(context: Context) -> NSView {
+        let view = KeyView()
+        view.onUp = onUp
+        view.onDown = onDown
+        view.onEnter = onEnter
+        view.onEscape = onEscape
+        view.onNumber = onNumber
+        return view
     }
     
-    private func setupOptions() {
-        var options: [(app: ApplicationInfo, profile: BrowserProfile?)] = []
-        for app in apps {
-            options.append((app, nil))
-            for profile in app.profiles {
-                options.append((app, profile))
+    func updateNSView(_ nsView: NSView, context: Context) {}
+    
+    class KeyView: NSView {
+        var onUp: (() -> Void)?
+        var onDown: (() -> Void)?
+        var onEnter: (() -> Void)?
+        var onEscape: (() -> Void)?
+        var onNumber: ((Int) -> Void)?
+        
+        override var acceptsFirstResponder: Bool { true }
+        
+        override func viewDidMoveToWindow() {
+            super.viewDidMoveToWindow()
+            window?.makeFirstResponder(self)
+        }
+        
+        override func keyDown(with event: NSEvent) {
+            switch event.keyCode {
+            case 126: // Up
+                onUp?()
+            case 125: // Down
+                onDown?()
+            case 36: // Enter
+                onEnter?()
+            case 53: // Escape
+                onEscape?()
+            default:
+                if let chars = event.characters, let num = Int(chars), num >= 1 && num <= 9 {
+                    onNumber?(num)
+                } else {
+                    super.keyDown(with: event)
+                }
             }
         }
-        self.allOptions = options
     }
 }
 
