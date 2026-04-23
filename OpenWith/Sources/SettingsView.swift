@@ -90,7 +90,7 @@ struct SettingsView: View {
                                             .padding(.leading, 20)
                                         Text(profile.name)
                                             .font(.subheadline)
-                                            .foregroundColor(.secondary)
+                                            .foregroundColor(appDelegate.hiddenBundleIds.contains(app.bundleIdentifier) ? .secondary.opacity(0.5) : .secondary)
                                         Spacer()
                                         Toggle("", isOn: Binding(
                                             get: { !appDelegate.hiddenProfileIds.contains(profile.id) },
@@ -106,6 +106,7 @@ struct SettingsView: View {
                                         .toggleStyle(.switch)
                                         .labelsHidden()
                                         .scaleEffect(0.8)
+                                        .disabled(appDelegate.hiddenBundleIds.contains(app.bundleIdentifier))
                                     }
                                 }
                             }
