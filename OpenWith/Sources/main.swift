@@ -84,12 +84,9 @@ class AppDelegate: NSObject, NSApplicationDelegate, ObservableObject {
             return
         }
         
-        // print("Intercepted URL: \(url)")
-        
         // Rules Engine Matching
         if let matchedRule = RulesEngine.match(url: url, rules: rules),
            let appUrl = NSWorkspace.shared.urlForApplication(withBundleIdentifier: matchedRule.targetAppBundleId) {
-            // print("Auto-routing to \(matchedRule.targetAppBundleId) due to rule: \(matchedRule.name)")
             
             let appInfo = ApplicationInfo(name: matchedRule.name, bundleIdentifier: matchedRule.targetAppBundleId, path: appUrl, icon: nil)
             var profile: BrowserProfile? = nil
@@ -145,11 +142,6 @@ class AppDelegate: NSObject, NSApplicationDelegate, ObservableObject {
             return
         }
         
-        if app.bundleIdentifier == "org.mozilla.firefox" && profile != nil {
-            openFirefox(url: url, profile: profile!, path: app.path)
-            return
-        }
-        
         let configuration = NSWorkspace.OpenConfiguration()
         if let profile = profile {
             // Chromium browsers use --profile-directory
@@ -160,19 +152,6 @@ class AppDelegate: NSObject, NSApplicationDelegate, ObservableObject {
             if let error = error {
                 print("Error opening URL: \(error.localizedDescription)")
             }
-        }
-    }
-
-    func openFirefox(url: URL, profile: BrowserProfile, path: URL) {
-        let binaryPath = path.appendingPathComponent("Contents/MacOS/firefox").path
-        let task = Process()
-        task.launchPath = binaryPath
-        task.arguments = ["--profile", profile.id, "--new-tab", url.absoluteString]
-        
-        do {
-            try task.run()
-        } catch {
-            print("Error launching Firefox profile: \(error)")
         }
     }
 
