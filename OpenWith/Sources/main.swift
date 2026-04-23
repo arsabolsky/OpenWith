@@ -245,6 +245,9 @@ class AppDelegate: NSObject, NSApplicationDelegate, ObservableObject {
         }
         
         if let profile = profile {
+            // Strip the bundleId prefix from the profile ID
+            let rawProfileId = profile.id.components(separatedBy: ":").last ?? profile.id
+            
             let chromiumIds = ["com.google.Chrome", "com.google.Chrome.canary", "org.chromium.Chromium", "com.microsoft.edgemac", "com.brave.Browser", "company.thebrowser.Browser", "com.vivaldi.Vivaldi", "net.imput.helium"]
             let isChromium = chromiumIds.contains(app.bundleIdentifier)
             let isFirefox = app.bundleIdentifier == "org.mozilla.firefox"
@@ -255,9 +258,9 @@ class AppDelegate: NSObject, NSApplicationDelegate, ObservableObject {
                 
                 var arguments = ["-na", app.path.path]
                 if isChromium {
-                    arguments.append(contentsOf: ["--args", "--profile-directory=\(profile.id)"])
+                    arguments.append(contentsOf: ["--args", "--profile-directory=\(rawProfileId)"])
                 } else if isFirefox {
-                    arguments.append(contentsOf: ["--args", "--new-instance", "--profile", profile.id])
+                    arguments.append(contentsOf: ["--args", "--new-instance", "--profile", rawProfileId])
                 }
                 arguments.append(url.absoluteString)
                 
@@ -274,7 +277,8 @@ class AppDelegate: NSObject, NSApplicationDelegate, ObservableObject {
         
         let configuration = NSWorkspace.OpenConfiguration()
         if let profile = profile {
-            configuration.arguments = ["--profile-directory=\(profile.id)"]
+            let rawProfileId = profile.id.components(separatedBy: ":").last ?? profile.id
+            configuration.arguments = ["--profile-directory=\(rawProfileId)"]
         }
         NSWorkspace.shared.open([url], withApplicationAt: app.path, configuration: configuration) { _, error in
             if let error = error {
@@ -290,6 +294,7 @@ class AppDelegate: NSObject, NSApplicationDelegate, ObservableObject {
             return
         }
 
+        let rawProfileId = profile.id.components(separatedBy: ":").last ?? profile.id
         let scriptSource = """
         set theURL to "\(url.absoluteString)"
         
@@ -304,14 +309,14 @@ class AppDelegate: NSObject, NSApplicationDelegate, ObservableObject {
                         tell menu bar item "File" of menu bar 1
                             tell menu 1
                                 tell menu item "New Window"
-                                    click menu item "\(profile.id)" of menu 1
+                                    click menu item "\(rawProfileId)" of menu 1
                                 end tell
                             end tell
                         end tell
                     on error
                         tell menu bar item "File" of menu bar 1
                             tell menu 1
-                                click menu item "\(profile.id)"
+                                click menu item "\(rawProfileId)"
                             end tell
                         end tell
                     end try

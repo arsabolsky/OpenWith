@@ -73,14 +73,14 @@ class AppDiscovery {
         for subPath in possiblePaths {
             let localStateUrl = supportDir.appendingPathComponent(subPath).appendingPathComponent("Local State")
             if fileManager.fileExists(atPath: localStateUrl.path) {
-                return parseChromiumProfiles(at: localStateUrl)
+                return parseChromiumProfiles(at: localStateUrl, bundleId: bundleId)
             }
         }
         
         return []
     }
     
-    private static func parseChromiumProfiles(at url: URL) -> [BrowserProfile] {
+    private static func parseChromiumProfiles(at url: URL, bundleId: String) -> [BrowserProfile] {
         guard let data = try? Data(contentsOf: url),
               let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
               let profile = json["profile"] as? [String: Any],
@@ -92,7 +92,8 @@ class AppDiscovery {
         for (key, value) in infoCache {
             if let details = value as? [String: Any],
                let name = details["name"] as? String {
-                discoveredProfiles.append(BrowserProfile(id: key, name: name))
+                // Ensure ID is globally unique by prefixing with bundleId
+                discoveredProfiles.append(BrowserProfile(id: "\(bundleId):\(key)", name: name))
             }
         }
         
@@ -100,6 +101,7 @@ class AppDiscovery {
     }
 
     private static func discoverFirefoxProfiles() -> [BrowserProfile] {
+        let bundleId = "org.mozilla.firefox"
         let fileManager = FileManager.default
         let supportDir = fileManager.urls(for: .applicationSupportDirectory, in: .userDomainMask).first!
         let firefoxDir = supportDir.appendingPathComponent("Firefox")
@@ -136,7 +138,7 @@ class AppDiscovery {
                                 let fullPath = firefoxDir.appendingPathComponent(relPath).path
                                 
                                 if !seenPaths.contains(fullPath) {
-                                    profiles.append(BrowserProfile(id: fullPath, name: name))
+                                    profiles.append(BrowserProfile(id: "\(bundleId):\(fullPath)", name: name))
                                     seenPaths.insert(fullPath)
                                 }
                             }
@@ -163,7 +165,7 @@ class AppDiscovery {
                     if let name = currentName, let path = currentPath {
                         let fullPath = path.hasPrefix("/") ? path : firefoxDir.appendingPathComponent(path).path
                         if !seenPaths.contains(fullPath) {
-                            profiles.append(BrowserProfile(id: fullPath, name: name))
+                            profiles.append(BrowserProfile(id: "\(bundleId):\(fullPath)", name: name))
                             seenPaths.insert(fullPath)
                         }
                     }
@@ -179,7 +181,7 @@ class AppDiscovery {
             if let name = currentName, let path = currentPath {
                 let fullPath = path.hasPrefix("/") ? path : firefoxDir.appendingPathComponent(path).path
                 if !seenPaths.contains(fullPath) {
-                    profiles.append(BrowserProfile(id: fullPath, name: name))
+                    profiles.append(BrowserProfile(id: "\(bundleId):\(fullPath)", name: name))
                 }
             }
         }
@@ -188,6 +190,7 @@ class AppDiscovery {
     }
 
     private static func discoverSafariProfiles() -> [BrowserProfile] {
+        let bundleId = "com.apple.Safari"
         let scriptSource = """
         tell application "System Events"
             if exists process "Safari" then
@@ -252,7 +255,7 @@ class AppDiscovery {
                                     continue
                                 }
                                 
-                                discoveredProfiles.append(BrowserProfile(id: id, name: displayName))
+                                discoveredProfiles.append(BrowserProfile(id: "\(bundleId):\(id)", name: displayName))
                             }
                         }
                         
