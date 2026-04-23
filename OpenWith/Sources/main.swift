@@ -57,8 +57,12 @@ class AppDelegate: NSObject, NSApplicationDelegate, ObservableObject {
         // Check Automation (Apple Events) for Safari
         if #available(macOS 10.14, *) {
             let safariTarget = NSAppleEventDescriptor(bundleIdentifier: "com.apple.Safari")
-            let status = AEDeterminePermissionToAutomateTarget(safariTarget.aeDescriptor, typeWildCard, typeWildCard, true)
-            isAutomationAllowed = (status == noErr)
+            if let aeDescPointer = safariTarget.aeDesc {
+                let status = AEDeterminePermissionToAutomateTarget(aeDescPointer, AEEventClass(typeWildCard), AEEventID(typeWildCard), true)
+                isAutomationAllowed = (status == noErr)
+            } else {
+                isAutomationAllowed = false
+            }
         } else {
             isAutomationAllowed = true
         }
