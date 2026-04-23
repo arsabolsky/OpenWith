@@ -36,7 +36,7 @@ struct PickerView: View {
                                 Text("\(index + 1)")
                                     .font(.caption2)
                                     .bold()
-                                    .foregroundColor(.secondary)
+                                    .foregroundColor(selectedIndex == index ? .white.opacity(0.8) : .secondary)
                                     .frame(width: 12)
                             } else {
                                 Spacer().frame(width: 12)
@@ -47,6 +47,7 @@ struct PickerView: View {
                                     .resizable()
                                     .frame(width: 16, height: 16)
                                     .padding(.leading, 12)
+                                    .foregroundColor(selectedIndex == index ? .white : .primary)
                                 Text(profile.name)
                                     .font(.subheadline)
                                     .foregroundColor(selectedIndex == index ? .white : .secondary)
@@ -110,29 +111,38 @@ struct PickerView: View {
         .background(VisualEffectView(material: .hudWindow, blendingMode: .behindWindow))
         .onAppear {
             setupOptions()
-        }
-        .background(KeyEventsView(
-            onUp: {
-                if selectedIndex > 0 { selectedIndex -= 1 }
-            },
-            onDown: {
-                if selectedIndex < allOptions.count - 1 { selectedIndex += 1 }
-            },
-            onEnter: {
-                if selectedIndex < allOptions.count {
-                    let opt = allOptions[selectedIndex]
-                    onSelect(opt.app, opt.profile)
+            
+            // Add local event monitor for keyboard navigation
+            NSEvent.addLocalMonitorForEvents(matching: .keyDown) { event in
+                switch event.keyCode {
+                case 126: // Up
+                    if selectedIndex > 0 { selectedIndex -= 1 }
+                    return nil
+                case 125: // Down
+                    if selectedIndex < allOptions.count - 1 { selectedIndex += 1 }
+                    return nil
+                case 36: // Enter
+                    if selectedIndex < allOptions.count {
+                        let opt = allOptions[selectedIndex]
+                        onSelect(opt.app, opt.profile)
+                    }
+                    return nil
+                case 53: // Escape
+                    onCancel()
+                    return nil
+                default:
+                    if let chars = event.characters, let num = Int(chars), num >= 1 && num <= 9 {
+                        let idx = num - 1
+                        if idx >= 0 && idx < allOptions.count {
+                            let opt = allOptions[idx]
+                            onSelect(opt.app, opt.profile)
+                        }
+                        return nil
+                    }
                 }
-            },
-            onEscape: onCancel,
-            onNumber: { num in
-                let idx = num - 1
-                if idx >= 0 && idx < allOptions.count {
-                    let opt = allOptions[idx]
-                    onSelect(opt.app, opt.profile)
-                }
+                return event
             }
-        ))
+        }
     }
     
     private func setupOptions() {
@@ -144,60 +154,6 @@ struct PickerView: View {
             }
         }
         self.allOptions = options
-    }
-}
-
-struct KeyEventsView: NSViewRepresentable {
-    let onUp: () -> Void
-    let onDown: () -> Void
-    let onEnter: () -> Void
-    let onEscape: () -> Void
-    let onNumber: (Int) -> Void
-    
-    func makeNSView(context: Context) -> NSView {
-        let view = KeyView()
-        view.onUp = onUp
-        view.onDown = onDown
-        view.onEnter = onEnter
-        view.onEscape = onEscape
-        view.onNumber = onNumber
-        return view
-    }
-    
-    func updateNSView(_ nsView: NSView, context: Context) {}
-    
-    class KeyView: NSView {
-        var onUp: (() -> Void)?
-        var onDown: (() -> Void)?
-        var onEnter: (() -> Void)?
-        var onEscape: (() -> Void)?
-        var onNumber: ((Int) -> Void)?
-        
-        override var acceptsFirstResponder: Bool { true }
-        
-        override func viewDidMoveToWindow() {
-            super.viewDidMoveToWindow()
-            window?.makeFirstResponder(self)
-        }
-        
-        override func keyDown(with event: NSEvent) {
-            switch event.keyCode {
-            case 126: // Up
-                onUp?()
-            case 125: // Down
-                onDown?()
-            case 36: // Enter
-                onEnter?()
-            case 53: // Escape
-                onEscape?()
-            default:
-                if let chars = event.characters, let num = Int(chars), num >= 1 && num <= 9 {
-                    onNumber?(num)
-                } else {
-                    super.keyDown(with: event)
-                }
-            }
-        }
     }
 }
 
