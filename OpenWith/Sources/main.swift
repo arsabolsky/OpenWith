@@ -8,6 +8,7 @@ class AppDelegate: NSObject, NSApplicationDelegate, ObservableObject {
     @Published var isAccessibilityTrusted: Bool = false
     @Published var isAutomationAllowed: Bool = false
     @Published var cachedBrowsers: [ApplicationInfo] = []
+    private var isRefreshingCache = false
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         loadRules()
@@ -37,9 +38,17 @@ class AppDelegate: NSObject, NSApplicationDelegate, ObservableObject {
     }
 
     func refreshBrowserCache() {
-        print("Refreshing browser cache...")
-        self.cachedBrowsers = AppDiscovery.getInstalledBrowsers()
-        fflush(stdout)
+        guard !isRefreshingCache else { return }
+        isRefreshingCache = true
+        
+        DispatchQueue.global(qos: .userInitiated).async {
+            let browsers = AppDiscovery.getInstalledBrowsers()
+            
+            DispatchQueue.main.async {
+                self.cachedBrowsers = browsers
+                self.isRefreshingCache = false
+            }
+        }
     }
 
     func loadRules() {
@@ -299,6 +308,8 @@ class AppDelegate: NSObject, NSApplicationDelegate, ObservableObject {
 }
 
 // Entry Point
+print("OpenWith started")
+fflush(stdout)
 let app = NSApplication.shared
 let delegate = AppDelegate()
 app.delegate = delegate

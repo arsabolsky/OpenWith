@@ -109,7 +109,9 @@ class AppDiscovery {
         var seenPaths = Set<String>()
         
         // Strategy 1: SQLite discovery (Newer Firefox / OpenIn style)
-        if let groupFiles = try? fileManager.contentsOfDirectory(at: profileGroupsDir, includingPropertiesForKeys: nil) {
+        if fileManager.fileExists(atPath: profileGroupsDir.path),
+           let groupFiles = try? fileManager.contentsOfDirectory(at: profileGroupsDir, includingPropertiesForKeys: nil) {
+            
             for file in groupFiles where file.pathExtension == "sqlite" {
                 let process = Process()
                 process.executableURL = URL(fileURLWithPath: "/usr/bin/sqlite3")
@@ -117,62 +119,67 @@ class AppDiscovery {
                 
                 let outputPipe = Pipe()
                 process.standardOutput = outputPipe
+                process.standardError = Pipe()
                 
-                try? process.run()
-                process.waitUntilExit()
-                
-                let data = outputPipe.fileHandleForReading.readDataToEndOfFile()
-                if let output = String(data: data, encoding: .utf8) {
-                    let lines = output.components(separatedBy: .newlines)
-                    for line in lines where !line.isEmpty {
-                        let parts = line.components(separatedBy: "|")
-                        if parts.count >= 2 {
-                            let relPath = parts[0]
-                            let name = parts[1]
-                            let fullPath = firefoxDir.appendingPathComponent(relPath).path
-                            
-                            if !seenPaths.contains(fullPath) {
-                                profiles.append(BrowserProfile(id: fullPath, name: name))
-                                seenPaths.insert(fullPath)
+                do {
+                    try process.run()
+                    let data = outputPipe.fileHandleForReading.readDataToEndOfFile()
+                    process.waitUntilExit()
+                    
+                    if let output = String(data: data, encoding: .utf8) {
+                        let lines = output.components(separatedBy: .newlines)
+                        for line in lines where !line.isEmpty {
+                            let parts = line.components(separatedBy: "|")
+                            if parts.count >= 2 {
+                                let relPath = parts[0]
+                                let name = parts[1]
+                                let fullPath = firefoxDir.appendingPathComponent(relPath).path
+                                
+                                if !seenPaths.contains(fullPath) {
+                                    profiles.append(BrowserProfile(id: fullPath, name: name))
+                                    seenPaths.insert(fullPath)
+                                }
                             }
                         }
                     }
+                } catch {
+                    print("Firefox SQLite error: \(error)")
                 }
             }
         }
         
         // Strategy 2: profiles.ini discovery (Legacy / Fallback)
-        if profiles.isEmpty {
-            let profilesIniUrl = firefoxDir.appendingPathComponent("profiles.ini")
-            if let content = try? String(contentsOf: profilesIniUrl, encoding: .utf8) {
-                let lines = content.components(separatedBy: .newlines)
-                var currentName: String?
-                var currentPath: String?
-                
-                for line in lines {
-                    let trimmed = line.trimmingCharacters(in: .whitespacesAndNewlines)
-                    if trimmed.hasPrefix("[Profile") {
-                        if let name = currentName, let path = currentPath {
-                            let fullPath = path.hasPrefix("/") ? path : firefoxDir.appendingPathComponent(path).path
-                            if !seenPaths.contains(fullPath) {
-                                profiles.append(BrowserProfile(id: fullPath, name: name))
-                                seenPaths.insert(fullPath)
-                            }
+        let profilesIniUrl = firefoxDir.appendingPathComponent("profiles.ini")
+        if fileManager.fileExists(atPath: profilesIniUrl.path),
+           let content = try? String(contentsOf: profilesIniUrl, encoding: .utf8) {
+            
+            let lines = content.components(separatedBy: .newlines)
+            var currentName: String?
+            var currentPath: String?
+            
+            for line in lines {
+                let trimmed = line.trimmingCharacters(in: .whitespacesAndNewlines)
+                if trimmed.hasPrefix("[Profile") {
+                    if let name = currentName, let path = currentPath {
+                        let fullPath = path.hasPrefix("/") ? path : firefoxDir.appendingPathComponent(path).path
+                        if !seenPaths.contains(fullPath) {
+                            profiles.append(BrowserProfile(id: fullPath, name: name))
+                            seenPaths.insert(fullPath)
                         }
-                        currentName = nil
-                        currentPath = nil
-                    } else if trimmed.hasPrefix("Name=") {
-                        currentName = String(trimmed.dropFirst(5))
-                    } else if trimmed.hasPrefix("Path=") {
-                        currentPath = String(trimmed.dropFirst(5))
                     }
+                    currentName = nil
+                    currentPath = nil
+                } else if trimmed.hasPrefix("Name=") {
+                    currentName = String(trimmed.dropFirst(5))
+                } else if trimmed.hasPrefix("Path=") {
+                    currentPath = String(trimmed.dropFirst(5))
                 }
-                
-                if let name = currentName, let path = currentPath {
-                    let fullPath = path.hasPrefix("/") ? path : firefoxDir.appendingPathComponent(path).path
-                    if !seenPaths.contains(fullPath) {
-                        profiles.append(BrowserProfile(id: fullPath, name: name))
-                    }
+            }
+            
+            if let name = currentName, let path = currentPath {
+                let fullPath = path.hasPrefix("/") ? path : firefoxDir.appendingPathComponent(path).path
+                if !seenPaths.contains(fullPath) {
+                    profiles.append(BrowserProfile(id: fullPath, name: name))
                 }
             }
         }
@@ -181,16 +188,13 @@ class AppDiscovery {
     }
 
     private static func discoverSafariProfiles() -> [BrowserProfile] {
-        print("Discovering Safari profiles via dynamic menu scanning...")
         let scriptSource = """
         tell application "System Events"
             if exists process "Safari" then
                 tell process "Safari"
                     set foundNames to {}
                     try
-                        -- Strategy: Scan the 'File' menu for 'New [Profile] Window'
                         tell menu 1 of menu bar item "File" of menu bar 1
-                            -- Check direct menu items first
                             set allItems to name of every menu item
                             repeat with itemName in allItems
                                 if itemName starts with "New " and itemName ends with " Window" then
@@ -198,7 +202,6 @@ class AppDiscovery {
                                 end if
                             end repeat
                             
-                            -- Also check submenus of 'New Window' just in case
                             try
                                 set subItems to name of menu items of menu 1 of menu item "New Window"
                                 repeat with subName in subItems
@@ -224,17 +227,11 @@ class AppDiscovery {
             var error: NSDictionary?
             let result = script.executeAndReturnError(&error)
             
-            if let err = error {
-                print("Safari Profile Discovery AppleScript Error: \(err)")
-            } else {
+            if error == nil {
                 let count = result.numberOfItems
                 if count >= 1 {
                     let firstItem = result.atIndex(1)?.stringValue
-                    if firstItem == "_SAFARI_NOT_RUNNING_" {
-                        print("Safari is not running. Using cached profiles.")
-                    } else if firstItem == "_ERROR_" {
-                        print("Error during Safari menu scanning. Using cached profiles.")
-                    } else {
+                    if firstItem != "_SAFARI_NOT_RUNNING_" && firstItem != "_ERROR_" {
                         var namesSet = Set<String>()
                         for i in 1...count {
                             if let fullName = result.atIndex(i)?.stringValue, !fullName.isEmpty {
@@ -251,7 +248,6 @@ class AppDiscovery {
                                     displayName = fullName
                                 }
                                 
-                                // Filter out static items
                                 if displayName == "Tab" || displayName == "Window" || displayName == "Private Window" || displayName == "Empty Tab Group" {
                                     continue
                                 }
@@ -261,7 +257,6 @@ class AppDiscovery {
                         }
                         
                         if !discoveredProfiles.isEmpty {
-                            print("Successfully discovered \(discoveredProfiles.count) Safari profiles live.")
                             saveSafariProfilesToCache(discoveredProfiles)
                         }
                     }
@@ -269,13 +264,7 @@ class AppDiscovery {
             }
         }
         
-        let finalProfiles = discoveredProfiles.isEmpty ? loadSafariProfilesFromCache() : discoveredProfiles
-        if discoveredProfiles.isEmpty && !finalProfiles.isEmpty {
-            print("Using \(finalProfiles.count) Safari profiles from persistent cache.")
-        }
-        
-        fflush(stdout)
-        return finalProfiles
+        return discoveredProfiles.isEmpty ? loadSafariProfilesFromCache() : discoveredProfiles
     }
 
     private static func saveSafariProfilesToCache(_ profiles: [BrowserProfile]) {
