@@ -145,19 +145,23 @@ class AppDelegate: NSObject, NSApplicationDelegate, ObservableObject {
             return
         }
         
-        let configuration = NSWorkspace.OpenConfiguration()
-        if let profile = profile {
-            if app.bundleIdentifier == "org.mozilla.firefox" {
-                configuration.arguments = ["-P", profile.id]
-            } else {
-                configuration.arguments = ["--profile-directory=\(profile.id)"]
-            }
+        if app.bundleIdentifier == "org.mozilla.firefox" && profile != nil {
+            openFirefox(url: url, profile: profile!, path: app.path)
+            return
         }
         
-        NSWorkspace.shared.open([url], withApplicationAt: app.path, configuration: configuration) { _, error in
-            if let error = error {
-                print("Error opening URL: \(error.localizedDescription)")
-            }
+        let configuration = NSWorkspace.OpenConfiguration()
+...
+    func openFirefox(url: URL, profile: BrowserProfile, path: URL) {
+        let binaryPath = path.appendingPathComponent("Contents/MacOS/firefox").path
+        let task = Process()
+        task.launchPath = binaryPath
+        task.arguments = ["-P", profile.id, "-new-tab", url.absoluteString]
+        
+        do {
+            try task.run()
+        } catch {
+            print("Error launching Firefox profile: \(error)")
         }
     }
 
