@@ -190,6 +190,25 @@ class AppDelegate: NSObject, NSApplicationDelegate, ObservableObject {
             return
         }
         
+        if let profile = profile {
+            // For Chromium-based browsers, we use /usr/bin/open -na to ensure the profile flag is respected
+            let isChromium = ["com.google.Chrome", "com.google.Chrome.canary", "org.chromium.Chromium", "com.microsoft.edgemac", "com.brave.Browser", "company.thebrowser.Browser", "com.vivaldi.Vivaldi"].contains(app.bundleIdentifier)
+            
+            if isChromium {
+                let process = Process()
+                process.executableURL = URL(fileURLWithPath: "/usr/bin/open")
+                process.arguments = ["-na", app.path.path, "--args", "--profile-directory=\(profile.id)", url.absoluteString]
+                
+                do {
+                    try process.run()
+                    return
+                } catch {
+                    print("Failed to launch Chromium profile via Process: \(error)")
+                    // Fallback to NSWorkspace if Process fails
+                }
+            }
+        }
+        
         let configuration = NSWorkspace.OpenConfiguration()
         if let profile = profile {
             configuration.arguments = ["--profile-directory=\(profile.id)"]
