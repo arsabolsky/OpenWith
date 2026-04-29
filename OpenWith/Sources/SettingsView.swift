@@ -1,4 +1,5 @@
 import SwiftUI
+import UniformTypeIdentifiers
 
 struct SettingsView: View {
     @ObservedObject var appDelegate: AppDelegate
@@ -177,11 +178,16 @@ struct SettingsView: View {
             }
             .padding()
         }
-        .frame(width: 500, height: 750)
+        .frame(width: 500, height: 850)
         .sheet(isPresented: $showingAddAppRule) {
             AddAppRuleView(appDelegate: appDelegate)
         }
     }
+}
+
+struct RunningAppInfo: Identifiable {
+    let id: String
+    let name: String
 }
 
 struct AddAppRuleView: View {
@@ -191,17 +197,27 @@ struct AddAppRuleView: View {
     @State private var sourceBundleId = ""
     @State private var targetBrowserBundleId = ""
     @State private var targetProfileId: String? = nil
+    @State private var runningApps: [RunningAppInfo] = []
     
     var body: some View {
         VStack(spacing: 20) {
             Text("Add Auto-Route Rule").font(.headline)
             
             Form {
-                Section(header: Text("Source Application Bundle ID")) {
-                    TextField("e.g. com.microsoft.teams", text: $sourceBundleId)
-                    Text("Tip: Open a link from the app first to see its ID in the logs.")
-                        .font(.caption2)
-                        .foregroundColor(.secondary)
+                Section(header: Text("Source Application")) {
+                    HStack {
+                        TextField("Bundle ID", text: $sourceBundleId)
+                        Button("Select App...") {
+                            selectAppFile()
+                        }
+                    }
+                    
+                    Picker("Running Apps", selection: $sourceBundleId) {
+                        Text("Select a running app").tag("")
+                        ForEach(runningApps) { app in
+                            Text(app.name).tag(app.id)
+                        }
+                    }
                 }
                 
                 Section(header: Text("Target Browser")) {
@@ -241,6 +257,37 @@ struct AddAppRuleView: View {
             }
         }
         .padding()
-        .frame(width: 400)
+        .frame(width: 450)
+        .onAppear {
+            updateRunningApps()
+        }
+    }
+    
+    func updateRunningApps() {
+        runningApps = NSWorkspace.shared.runningApplications
+            .filter { $0.activationPolicy == .regular }
+            .compactMap { app -> RunningAppInfo? in
+                guard let bid = app.bundleIdentifier, let name = app.localizedName else { return nil }
+                return RunningAppInfo(id: bid, name: name)
+            }
+            .sorted { $0.name < $1.name }
+    }
+    
+    func selectAppFile() {
+        let panel = NSOpenPanel()
+        if #available(macOS 11.0, *) {
+            panel.allowedContentTypes = [UTType.application]
+        } else {
+            panel.allowedFileTypes = ["app"]
+        }
+        panel.allowsMultipleSelection = false
+        panel.canChooseDirectories = false
+        panel.canChooseFiles = true
+        
+        if panel.runModal() == .OK, let url = panel.url {
+            if let bundle = Bundle(url: url), let bid = bundle.bundleIdentifier {
+                sourceBundleId = bid
+            }
+        }
     }
 }
