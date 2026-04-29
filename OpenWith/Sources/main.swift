@@ -2,6 +2,13 @@ import Cocoa
 import SwiftUI
 import ServiceManagement
 
+struct AppRule: Identifiable, Codable {
+    var id = UUID()
+    let sourceBundleId: String
+    let targetBrowserBundleId: String
+    let targetProfileId: String?
+}
+
 class PickerWindow: NSPanel {
     override var canBecomeKey: Bool { true }
     override var canBecomeMain: Bool { true }
@@ -17,12 +24,14 @@ class AppDelegate: NSObject, NSApplicationDelegate, ObservableObject {
     
     @Published var hiddenBundleIds: Set<String> = []
     @Published var hiddenProfileIds: Set<String> = []
+    @Published var appRules: [AppRule] = []
     @Published var isLaunchAtLoginEnabled: Bool = false
     
     private var isRefreshingCache = false
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         loadHiddenItems()
+        loadAppRules()
         checkPermissions()
         refreshBrowserCache()
         checkLaunchAtLoginStatus()
@@ -109,6 +118,19 @@ class AppDelegate: NSObject, NSApplicationDelegate, ObservableObject {
     func saveHiddenItems() {
         UserDefaults.standard.set(Array(hiddenBundleIds), forKey: "HiddenBundleIds")
         UserDefaults.standard.set(Array(hiddenProfileIds), forKey: "HiddenProfileIds")
+    }
+
+    func loadAppRules() {
+        if let data = UserDefaults.standard.data(forKey: "AppRules"),
+           let decoded = try? JSONDecoder().decode([AppRule].self, from: data) {
+            self.appRules = decoded
+        }
+    }
+
+    func saveAppRules() {
+        if let encoded = try? JSONEncoder().encode(appRules) {
+            UserDefaults.standard.set(encoded, forKey: "AppRules")
+        }
     }
 
     func checkPermissions() {
@@ -204,6 +226,32 @@ class AppDelegate: NSObject, NSApplicationDelegate, ObservableObject {
         }
         
         print("Intercepted URL: \(url)")
+
+        // Identify source app
+        var senderBundleId: String? = nil
+        if let senderPIDDescriptor = event.attributeDescriptor(forKeyword: AEKeyword(keySenderPIDAttr)) {
+            let pid = senderPIDDescriptor.int32Value
+            if let senderApp = NSRunningApplication(processIdentifier: pid) {
+                senderBundleId = senderApp.bundleIdentifier
+                print("Sender: \(senderBundleId ?? "Unknown")")
+            }
+        }
+
+        // Check for matching rule
+        if let senderId = senderBundleId, let rule = appRules.first(where: { $0.sourceBundleId == senderId }) {
+            if let appInfo = cachedBrowsers.first(where: { $0.bundleIdentifier == rule.targetBrowserBundleId }) {
+                var profile: BrowserProfile? = nil
+                if let profileId = rule.targetProfileId {
+                    profile = appInfo.profiles.first(where: { $0.id == profileId })
+                }
+                
+                print("Auto-routing from \(senderId) to \(appInfo.name) \(profile?.name ?? "")")
+                DispatchQueue.main.async {
+                    self.open(url: url, in: appInfo, profile: profile)
+                }
+                return
+            }
+        }
         
         DispatchQueue.main.async {
             self.showAppPicker(for: url)
