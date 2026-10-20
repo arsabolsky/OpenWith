@@ -40,15 +40,34 @@ struct SettingsView: View {
             .padding()
 
             GroupBox(label: Text("General").font(.headline)) {
-                HStack {
-                    Text("Launch at Login")
-                    Spacer()
-                    Toggle("", isOn: Binding(
-                        get: { appDelegate.isLaunchAtLoginEnabled },
-                        set: { _ in appDelegate.toggleLaunchAtLogin() }
-                    ))
-                    .toggleStyle(.switch)
-                    .labelsHidden()
+                VStack(alignment: .leading, spacing: 8) {
+                    HStack {
+                        Text("Launch at Login")
+                        Spacer()
+                        Toggle("", isOn: Binding(
+                            get: { appDelegate.isLaunchAtLoginEnabled },
+                            set: { _ in appDelegate.toggleLaunchAtLogin() }
+                        ))
+                        .toggleStyle(.switch)
+                        .labelsHidden()
+                    }
+
+                    HStack {
+                        Text("Show in Menu Bar")
+                        Spacer()
+                        Toggle("", isOn: Binding(
+                            get: { !appDelegate.isMenuBarIconHidden },
+                            set: { visible in appDelegate.setMenuBarIconHidden(!visible) }
+                        ))
+                        .toggleStyle(.switch)
+                        .labelsHidden()
+                    }
+
+                    if appDelegate.isMenuBarIconHidden {
+                        Text("Open OpenWith from Finder or Spotlight to return to Settings.")
+                            .font(.caption)
+                            .foregroundColor(.secondary)
+                    }
                 }
                 .padding(8)
             }
@@ -171,6 +190,12 @@ struct SettingsView: View {
             .padding()
             
             HStack {
+                Button("Quit OpenWith") {
+                    NSApp.terminate(nil)
+                }
+                Button("Clear Cache") {
+                    appDelegate.clearCache()
+                }
                 Spacer()
                 Button("Done") {
                     NSApp.keyWindow?.close()

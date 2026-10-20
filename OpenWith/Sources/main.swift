@@ -26,8 +26,19 @@ class AppDelegate: NSObject, NSApplicationDelegate, ObservableObject {
     @Published var hiddenProfileIds: Set<String> = []
     @Published var appRules: [AppRule] = []
     @Published var isLaunchAtLoginEnabled: Bool = false
+    @Published var isMenuBarIconHidden: Bool = UserDefaults.standard.bool(forKey: "HideMenuBarIcon")
     
     private var isRefreshingCache = false
+    private var launchedAsLoginItem = false
+
+    func applicationWillFinishLaunching(_ notification: Notification) {
+        // The launch Apple Event tells us whether we were started as a login item
+        if let event = NSAppleEventManager.shared().currentAppleEvent,
+           event.eventID == kAEOpenApplication,
+           event.paramDescriptor(forKeyword: keyAEPropData)?.enumCodeValue == keyAELaunchedAsLogInItem {
+            launchedAsLoginItem = true
+        }
+    }
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         loadHiddenItems()
@@ -36,13 +47,7 @@ class AppDelegate: NSObject, NSApplicationDelegate, ObservableObject {
         refreshBrowserCache()
         checkLaunchAtLoginStatus()
         
-        // Setup Menu Bar Item
-        statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
-        if let button = statusItem?.button {
-            button.title = "🔗"
-        }
-
-        setupMenu()
+        updateStatusItem()
         
         // Register for Apple Events (URLs)
         NSAppleEventManager.shared().setEventHandler(
@@ -57,6 +62,37 @@ class AppDelegate: NSObject, NSApplicationDelegate, ObservableObject {
             DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) {
                 self.openSetup()
             }
+        } else if isMenuBarIconHidden && !launchedAsLoginItem,
+                  notification.userInfo?[NSApplication.launchIsDefaultUserInfoKey] as? Bool == true {
+            // Without a menu bar icon, a manual launch is the only way into Settings
+            openSettings()
+        }
+    }
+
+    // Called when the user opens the app (Finder, Spotlight, Dock) while it is already running
+    func applicationShouldHandleReopen(_ sender: NSApplication, hasVisibleWindows flag: Bool) -> Bool {
+        openSettings()
+        return false
+    }
+
+    func setMenuBarIconHidden(_ hidden: Bool) {
+        isMenuBarIconHidden = hidden
+        UserDefaults.standard.set(hidden, forKey: "HideMenuBarIcon")
+        updateStatusItem()
+    }
+
+    func updateStatusItem() {
+        if isMenuBarIconHidden {
+            if let item = statusItem {
+                NSStatusBar.system.removeStatusItem(item)
+                statusItem = nil
+            }
+        } else if statusItem == nil {
+            statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
+            if let button = statusItem?.button {
+                button.title = "🔗"
+            }
+            setupMenu()
         }
     }
 
